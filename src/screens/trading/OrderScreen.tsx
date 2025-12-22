@@ -1,0 +1,331 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/types';
+import { useTradingStore, useWalletStore } from '@/store';
+import { tradingService } from '@/services/api/tradingService';
+import { formatEnergy, formatCurrency } from '@/utils/helpers';
+
+type OrderScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+interface Props {
+  navigation: OrderScreenNavigationProp;
+  route: {
+    params: {
+      sellerId: string;
+      sellerName: string;
+      pricePerUnit: number;
+      availableEnergy: number;
+    };
+  };
+}
+
+export default function OrderScreen({ navigation, route }: Props) {
+  const { sellerId, sellerName, pricePerUnit, availableEnergy } = route.params;
+  const { addOrder } = useTradingStore();
+  const { wallet } = useWalletStore();
+  const [energyAmount, setEnergyAmount] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const energyValue = parseFloat(energyAmount) || 0;
+  const totalPrice = energyValue * pricePerUnit;
+  const canAfford = wallet ? wallet.cashBalance >= totalPrice : false;
+
+  const handlePlaceOrder = async () => {
+    if (!energyAmount || energyValue <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid energy amount');
+      return;
+    }
+
+    if (energyValue > availableEnergy) {
+      Alert.alert(
+        'Insufficient Energy',
+        `Only ${formatEnergy(availableEnergy, 'kWh')} available`
+      );
+      return;
+    }
+
+    if (!canAfford) {
+      Alert.alert('Insufficient Balance', 'Please top up your wallet');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // TODO: Uncomment when backend is ready
+      // const response = await tradingService.createOrder({
+      //   sellerId,
+      //   energyAmount: energyValue,
+      //   pricePerUnit,
+      // });
+      // if (response.success && response.data) {
+      //   addOrder(response.data);
+      //   navigation.goBack();
+      //   Alert.alert('Success', 'Order placed successfully');
+      // } else {
+      //   throw new Error(response.error || 'Failed to place order');
+      // }
+
+      // Mock implementation
+      const mockOrder = {
+        id: `order_${Date.now()}`,
+        buyerId: 'current_user_id',
+        sellerId,
+        energyAmount: energyValue,
+        pricePerUnit,
+        totalPrice,
+        status: 'pending' as const,
+        createdAt: new Date(),
+      };
+
+      addOrder(mockOrder);
+      navigation.goBack();
+      Alert.alert('Success', 'Order placed successfully');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to place order');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Place Order</Text>
+
+          <View style={styles.sellerInfo}>
+            <Text style={styles.sellerLabel}>Seller</Text>
+            <Text style={styles.sellerName}>{sellerName}</Text>
+          </View>
+
+          <View style={styles.priceInfo}>
+            <Text style={styles.priceLabel}>Price per unit</Text>
+            <Text style={styles.priceValue}>{formatCurrency(pricePerUnit)}</Text>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Energy Amount (kWh)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter amount"
+              keyboardType="decimal-pad"
+              value={energyAmount}
+              onChangeText={setEnergyAmount}
+            />
+            <Text style={styles.hint}>
+              Available: {formatEnergy(availableEnergy, 'kWh')}
+            </Text>
+          </View>
+
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Energy</Text>
+              <Text style={styles.summaryValue}>
+                {formatEnergy(energyValue, 'kWh')}
+              </Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Price per unit</Text>
+              <Text style={styles.summaryValue}>
+                {formatCurrency(pricePerUnit)}
+              </Text>
+            </View>
+            <View style={[styles.summaryRow, styles.summaryTotal]}>
+              <Text style={styles.summaryTotalLabel}>Total</Text>
+              <Text style={styles.summaryTotalValue}>
+                {formatCurrency(totalPrice)}
+              </Text>
+            </View>
+          </View>
+
+          {wallet && (
+            <View style={styles.balanceInfo}>
+              <Text style={styles.balanceLabel}>Wallet Balance</Text>
+              <Text style={styles.balanceValue}>
+                {formatCurrency(wallet.cashBalance)}
+              </Text>
+              {!canAfford && (
+                <Text style={styles.balanceWarning}>
+                  Insufficient balance. Top up required.
+                </Text>
+              )}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              (!canAfford || isSubmitting) && styles.submitButtonDisabled,
+            ]}
+            onPress={handlePlaceOrder}
+            disabled={!canAfford || isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.submitButtonText}>Place Order</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 24,
+  },
+  sellerInfo: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sellerLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  sellerName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  priceInfo: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  priceValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#ffffff',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  summary: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  summaryTotal: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    marginTop: 8,
+    paddingTop: 16,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  summaryTotalLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  summaryTotalValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#10b981',
+  },
+  balanceInfo: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 24,
+  },
+  balanceLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  balanceValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  balanceWarning: {
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: 4,
+  },
+  submitButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
