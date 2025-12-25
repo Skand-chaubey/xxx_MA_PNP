@@ -5,6 +5,12 @@ import { getCurrentSession } from '@/services/supabase/client';
 const API_BASE_URL =
   Constants.expoConfig?.extra?.apiBaseUrl || process.env.API_BASE_URL || 'https://api.powernetpro.com';
 
+// Debug: Log the actual URL being used
+if (__DEV__) {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+  console.log('📋 Config from app.json:', Constants.expoConfig?.extra?.apiBaseUrl);
+}
+
 const TOKEN_KEY = 'auth_token';
 
 export interface ApiError {

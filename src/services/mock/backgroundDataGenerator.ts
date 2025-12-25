@@ -2,9 +2,14 @@ import { AppState, AppStateStatus } from 'react-native';
 import { MeterSimulator } from './meterSimulator';
 import { MeterConfig, DEFAULT_METER_CONFIG } from '@/utils/meterConfig';
 import { EnergyData } from '@/types';
-import { useMeterStore } from '@/store/meterStore';
 import { supabaseDatabaseService } from '@/services/supabase/databaseService';
 import { offlineStorage } from '@/utils/offlineStorage';
+
+// Lazy import to avoid circular dependency
+const getMeterStore = () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('@/store/meterStore').useMeterStore;
+};
 
 /**
  * Background Data Generator
@@ -81,7 +86,9 @@ export class BackgroundDataGenerator {
       const data = this.simulator.generateRealTimeData(this.meterId);
 
       // Add to store (for immediate UI update)
-      const { addEnergyData } = useMeterStore.getState();
+      // Use lazy import to avoid circular dependency
+      const meterStore = getMeterStore();
+      const { addEnergyData } = meterStore.getState();
       addEnergyData([data]);
 
       // Store in Supabase (async, don't wait)
@@ -140,7 +147,9 @@ export class BackgroundDataGenerator {
     }
 
     // Add to store
-    const { addEnergyData } = useMeterStore.getState();
+    // Use lazy import to avoid circular dependency
+    const meterStore = getMeterStore();
+    const { addEnergyData } = meterStore.getState();
     addEnergyData(data);
 
     return data;
