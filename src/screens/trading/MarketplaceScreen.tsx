@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,18 +11,29 @@ import {
   TextInput,
   Switch,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
 import { RootStackParamList, Seller } from '@/types';
 import { becknClient } from '@/services/beckn/becknClient';
 import { tradingService } from '@/services/api/tradingService';
 import { formatCurrency, formatEnergy, calculateDistance } from '@/utils/helpers';
 import { SEARCH_RADIUS_KM, MIN_SELL_PRICE, MAX_SELL_PRICE } from '@/utils/constants';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+
+const { width, height } = Dimensions.get('window');
+
+// Initialize Mapbox
+const MAPBOX_TOKEN = Constants.expoConfig?.extra?.mapboxAccessToken || process.env.MAPBOX_ACCESS_TOKEN || '';
+if (MAPBOX_TOKEN) {
+  Mapbox.setAccessToken(MAPBOX_TOKEN);
+}
 
 type MarketplaceScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -47,6 +58,10 @@ export default function MarketplaceScreen({ navigation }: Props) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [selectedSeller, setSelectedSeller] = useState<Seller | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+  const mapRef = useRef<Mapbox.MapView>(null);
+  const cameraRef = useRef<Mapbox.Camera>(null);
   const [filters, setFilters] = useState<Filters>({
     minPrice: MIN_SELL_PRICE.toString(),
     maxPrice: MAX_SELL_PRICE.toString(),
@@ -223,6 +238,25 @@ export default function MarketplaceScreen({ navigation }: Props) {
       });
 
       setSellers(filteredResults);
+
+      // Center map on results if in map view
+      if (viewMode === 'map' && filteredResults.length > 0 && mapReady && cameraRef.current) {
+        const lats = filteredResults.map((s) => s.location.lat);
+        const lngs = filteredResults.map((s) => s.location.lng);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+
+        cameraRef.current.setCamera({
+          centerCoordinate: [centerLng, centerLat],
+          zoomLevel: 12,
+          animationDuration: 1000,
+        });
+      }
     } catch (error: any) {
       console.error('Error searching sellers:', error);
       Alert.alert('Error', 'Failed to search sellers. Please try again.');
@@ -230,7 +264,7 @@ export default function MarketplaceScreen({ navigation }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [userLocation, filters, isOnline]);
+  }, [userLocation, filters, isOnline, viewMode, mapReady]);
 
   useEffect(() => {
     if (userLocation) {
@@ -250,6 +284,10 @@ export default function MarketplaceScreen({ navigation }: Props) {
       pricePerUnit: seller.pricePerUnit,
       availableEnergy: seller.availableEnergy,
     });
+  };
+
+  const handleMarkerPress = (seller: Seller) => {
+    setSelectedSeller(seller);
   };
 
   const renderSellerCard = (seller: Seller) => (
@@ -306,6 +344,190 @@ export default function MarketplaceScreen({ navigation }: Props) {
       </View>
     </TouchableOpacity>
   );
+
+  const renderMapView = () => {
+    if (!MAPBOX_TOKEN) {
+      return (
+        <View style={styles.mapContainer}>
+          <View style={styles.mapPlaceholder}>
+            <MaterialCommunityIcons name="map" size={64} color="#d1d5db" />
+            <Text style={styles.mapPlaceholderText}>
+              Map view requires Mapbox credentials{'\n'}
+              Configure MAPBOX_ACCESS_TOKEN in your .env file
+            </Text>
+            <TouchableOpacity
+              style={styles.switchToListButton}
+              onPress={() => setViewMode('list')}
+            >
+              <Text style={styles.switchToListButtonText}>Switch to List View</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    const centerLocation = userLocation || DEFAULT_LOCATION;
+
+    return (
+      <View style={styles.mapContainer}>
+        <Mapbox.MapView
+          ref={mapRef}
+          style={styles.map}
+          styleURL={Mapbox.StyleURL.Street}
+          onDidFinishLoadingMap={() => setMapReady(true)}
+          logoEnabled={false}
+          attributionEnabled={false}
+        >
+          <Mapbox.Camera
+            ref={cameraRef}
+            defaultSettings={{
+              centerCoordinate: [centerLocation.lng, centerLocation.lat],
+              zoomLevel: 12,
+            }}
+          />
+
+          {/* User Location Marker */}
+          {userLocation && (
+            <Mapbox.PointAnnotation
+              id="user-location"
+              coordinate={[userLocation.lng, userLocation.lat]}
+            >
+              <View style={styles.userLocationMarker}>
+                <View style={styles.userLocationDot} />
+                <View style={styles.userLocationPulse} />
+              </View>
+            </Mapbox.PointAnnotation>
+          )}
+
+          {/* Seller Markers */}
+          {sellers.map((seller) => (
+            <Mapbox.PointAnnotation
+              key={seller.id}
+              id={seller.id}
+              coordinate={[seller.location.lng, seller.location.lat]}
+              onSelected={() => handleMarkerPress(seller)}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.sellerMarker,
+                  seller.greenEnergy && styles.sellerMarkerGreen,
+                ]}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons
+                  name={seller.greenEnergy ? 'solar-power' : 'lightning-bolt'}
+                  size={24}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </Mapbox.PointAnnotation>
+          ))}
+        </Mapbox.MapView>
+
+        {/* Map Controls */}
+        <View style={styles.mapControls}>
+          <TouchableOpacity
+            style={styles.mapControlButton}
+            onPress={() => {
+              if (userLocation && cameraRef.current) {
+                cameraRef.current.setCamera({
+                  centerCoordinate: [userLocation.lng, userLocation.lat],
+                  zoomLevel: 14,
+                  animationDuration: 500,
+                });
+              }
+            }}
+          >
+            <Ionicons name="locate" size={20} color="#10b981" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.mapControlButton}
+            onPress={() => setViewMode('list')}
+          >
+            <Ionicons name="list" size={20} color="#10b981" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Seller Info Modal */}
+        {selectedSeller && (
+          <Modal
+            visible={!!selectedSeller}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setSelectedSeller(null)}
+          >
+            <View style={styles.sellerModalOverlay}>
+              <View style={styles.sellerModal}>
+                <View style={styles.sellerModalHeader}>
+                  <Text style={styles.sellerModalTitle}>{selectedSeller.name}</Text>
+                  <TouchableOpacity onPress={() => setSelectedSeller(null)}>
+                    <Ionicons name="close" size={24} color="#111827" />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.sellerModalContent}>
+                  <View style={styles.sellerModalRow}>
+                    <MaterialCommunityIcons name="currency-inr" size={20} color="#6b7280" />
+                    <Text style={styles.sellerModalLabel}>Price:</Text>
+                    <Text style={styles.sellerModalValue}>
+                      {formatCurrency(selectedSeller.pricePerUnit)}/kWh
+                    </Text>
+                  </View>
+                  <View style={styles.sellerModalRow}>
+                    <MaterialCommunityIcons name="lightning-bolt" size={20} color="#6b7280" />
+                    <Text style={styles.sellerModalLabel}>Available:</Text>
+                    <Text style={styles.sellerModalValue}>
+                      {formatEnergy(selectedSeller.availableEnergy, 'kWh')}
+                    </Text>
+                  </View>
+                  {selectedSeller.distance !== undefined && (
+                    <View style={styles.sellerModalRow}>
+                      <Ionicons name="location" size={20} color="#6b7280" />
+                      <Text style={styles.sellerModalLabel}>Distance:</Text>
+                      <Text style={styles.sellerModalValue}>
+                        {selectedSeller.distance.toFixed(1)} km
+                      </Text>
+                    </View>
+                  )}
+                  {selectedSeller.rating !== undefined && (
+                    <View style={styles.sellerModalRow}>
+                      <Ionicons name="star" size={20} color="#fbbf24" />
+                      <Text style={styles.sellerModalLabel}>Rating:</Text>
+                      <Text style={styles.sellerModalValue}>
+                        {selectedSeller.rating.toFixed(1)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.sellerModalButton}
+                  onPress={() => {
+                    setSelectedSeller(null);
+                    handleSellerPress(selectedSeller);
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#10b981', '#059669']}
+                    style={styles.sellerModalButtonGradient}
+                  >
+                    <Text style={styles.sellerModalButtonText}>View Details</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Results Count Overlay */}
+        {sellers.length > 0 && (
+          <View style={styles.mapResultsOverlay}>
+            <Text style={styles.mapResultsText}>
+              {sellers.length} seller{sellers.length !== 1 ? 's' : ''} found
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderFilters = () => (
     <Modal
@@ -447,21 +669,7 @@ export default function MarketplaceScreen({ navigation }: Props) {
       {renderFilters()}
 
       {viewMode === 'map' ? (
-        <View style={styles.mapContainer}>
-          <View style={styles.mapPlaceholder}>
-            <MaterialCommunityIcons name="map" size={64} color="#d1d5db" />
-            <Text style={styles.mapPlaceholderText}>
-              Map view requires Mapbox credentials{'\n'}
-              Configure MAPBOX_ACCESS_TOKEN in your .env file
-            </Text>
-            <TouchableOpacity
-              style={styles.switchToListButton}
-              onPress={() => setViewMode('list')}
-            >
-              <Text style={styles.switchToListButtonText}>Switch to List View</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        renderMapView()
       ) : (
         <ScrollView
           style={styles.scrollView}
@@ -799,6 +1007,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f3f4f6',
   },
+  map: {
+    flex: 1,
+  },
   mapPlaceholder: {
     flex: 1,
     justifyContent: 'center',
@@ -823,5 +1034,142 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  userLocationMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#3b82f6',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userLocationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ffffff',
+  },
+  userLocationPulse: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#3b82f6',
+    opacity: 0.3,
+  },
+  sellerMarker: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#10b981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  sellerMarkerGreen: {
+    backgroundColor: '#22c55e',
+  },
+  mapControls: {
+    position: 'absolute',
+    right: 16,
+    bottom: 16,
+    gap: 12,
+  },
+  mapControlButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  sellerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  sellerModal: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '50%',
+  },
+  sellerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  sellerModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  sellerModalContent: {
+    gap: 16,
+    marginBottom: 20,
+  },
+  sellerModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sellerModalLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    flex: 1,
+  },
+  sellerModalValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sellerModalButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  sellerModalButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  sellerModalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  mapResultsOverlay: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  mapResultsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
   },
 });
