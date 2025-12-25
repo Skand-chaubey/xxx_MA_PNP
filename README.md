@@ -43,6 +43,16 @@ A React Native mobile application for PowerNetPro, enabling P2P energy trading w
   /assets          # Images, fonts, etc.
 ```
 
+## 📚 Documentation
+
+**All documentation is now organized in the [`docs/`](docs/) directory.**
+
+- **[📖 Documentation Index](docs/README.md)** - Complete documentation guide
+- **[🚀 Setup Guide](docs/setup/SETUP_GUIDE.md)** - Complete setup instructions
+- **[⚙️ Supabase Setup](docs/setup/SUPABASE_SETUP.md)** - Supabase configuration
+- **[🔧 Troubleshooting](docs/troubleshooting/COMMON_ISSUES.md)** - Common issues and solutions
+- **[📊 Implementation Status](docs/development/IMPLEMENTATION_STATUS.md)** - Feature completion status
+
 ## Getting Started
 
 ### Prerequisites
@@ -52,31 +62,33 @@ A React Native mobile application for PowerNetPro, enabling P2P energy trading w
 - iOS Simulator (for iOS development) or Android Emulator (for Android development)
 - Expo Go app on your physical device (optional)
 
-### Installation
+### Quick Start
 
-1. Clone the repository
-2. Install dependencies:
+1. **Clone the repository**
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-3. Set up environment variables:
+3. **Set up environment variables:**
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
-4. Start the development server:
+4. **Start the development server:**
    ```bash
    npm start
    ```
 
-5. Run on your preferred platform:
+5. **Run on your preferred platform:**
    ```bash
    npm run android  # For Android
    npm run ios      # For iOS
    npm run web      # For Web
    ```
+
+**For detailed setup instructions, see [Setup Guide](docs/setup/SETUP_GUIDE.md)**
 
 ## Development
 

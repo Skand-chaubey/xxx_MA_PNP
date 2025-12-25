@@ -2,11 +2,13 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { RootStackParamList, MainTabParamList } from '@/types';
 import { useAuthStore } from '@/store';
 
 // Auth Screens
 import LoginScreen from '@/screens/auth/LoginScreen';
+import SignUpScreen from '@/screens/auth/SignUpScreen';
 import OTPScreen from '@/screens/auth/OTPScreen';
 import OnboardingScreen from '@/screens/auth/OnboardingScreen';
 
@@ -31,6 +33,7 @@ import TradingBotScreen from '@/screens/profile/TradingBotScreen';
 
 // Wallet Screens
 import TopUpScreen from '@/screens/wallet/TopUpScreen';
+import WithdrawScreen from '@/screens/wallet/WithdrawScreen';
 
 // Meter Screens
 import MeterStatusScreen from '@/screens/meter/MeterStatusScreen';
@@ -45,12 +48,76 @@ const MainTabNavigator = () => {
         headerShown: false,
         tabBarActiveTintColor: '#10b981',
         tabBarInactiveTintColor: '#6b7280',
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopWidth: 1,
+          borderTopColor: '#e5e7eb',
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
       }}
     >
-      <MainTabs.Screen name="Home" component={HomeScreen} />
-      <MainTabs.Screen name="Marketplace" component={MarketplaceScreen} />
-      <MainTabs.Screen name="Wallet" component={WalletScreen} />
-      <MainTabs.Screen name="Profile" component={ProfileScreen} />
+      <MainTabs.Screen 
+        name="Home" 
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons 
+              name={focused ? 'home' : 'home-outline'} 
+              size={size} 
+              color={color} 
+            />
+          ),
+          tabBarLabel: 'Home',
+        }}
+      />
+      <MainTabs.Screen 
+        name="Marketplace" 
+        component={MarketplaceScreen}
+        options={{
+          tabBarIcon: ({ color, size, focused }) => (
+            <MaterialCommunityIcons 
+              name={focused ? 'store' : 'store-outline'} 
+              size={size} 
+              color={color} 
+            />
+          ),
+          tabBarLabel: 'Marketplace',
+        }}
+      />
+      <MainTabs.Screen 
+        name="Wallet" 
+        component={WalletScreen}
+        options={{
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons 
+              name={focused ? 'wallet' : 'wallet-outline'} 
+              size={size} 
+              color={color} 
+            />
+          ),
+          tabBarLabel: 'Wallet',
+        }}
+      />
+      <MainTabs.Screen 
+        name="Profile" 
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons 
+              name={focused ? 'person' : 'person-outline'} 
+              size={size} 
+              color={color} 
+            />
+          ),
+          tabBarLabel: 'Profile',
+        }}
+      />
     </MainTabs.Navigator>
   );
 };
@@ -64,7 +131,7 @@ export const AppNavigator = () => {
         {!isAuthenticated ? (
           <>
             <RootStack.Screen name="Login" component={LoginScreen} />
-            <RootStack.Screen name="OTP" component={OTPScreen} />
+            <RootStack.Screen name="SignUp" component={SignUpScreen} />
             <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
           </>
         ) : (
@@ -98,6 +165,11 @@ export const AppNavigator = () => {
             <RootStack.Screen
               name="TopUp"
               component={TopUpScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <RootStack.Screen
+              name="Withdraw"
+              component={WithdrawScreen}
               options={{ presentation: 'modal' }}
             />
             <RootStack.Screen

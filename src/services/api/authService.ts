@@ -4,6 +4,8 @@ export {
   supabaseAuthService as authService,
   type SendOTPRequest,
   type VerifyOTPRequest,
+  type SignUpRequest,
+  type SignInRequest,
   type AuthResponse,
 } from '../supabase/authService';
 

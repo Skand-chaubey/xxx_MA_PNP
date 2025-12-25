@@ -13,6 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { validateEmail } from '@/utils/helpers';
 import { authService } from '@/services/api/authService';
+import { useAuthStore } from '@/store';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -22,7 +23,9 @@ interface Props {
 
 export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { setUser, setToken } = useAuthStore();
 
   const handleLogin = async () => {
     const trimmedEmail = email.trim().toLowerCase();
@@ -32,28 +35,27 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
+    if (!password || password.length < 6) {
+      Alert.alert('Invalid Password', 'Password must be at least 6 characters');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await authService.sendOTP({ email: trimmedEmail });
-      if (response.success) {
-        Alert.alert(
-          'OTP Sent',
-          'Please check your email for the 6-digit verification code. If you received a confirmation email instead, please check Supabase settings (see FIX_OTP_EMAIL_ISSUE.md)',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('OTP', { email: trimmedEmail }),
-            },
-          ]
-        );
+      const response = await authService.signIn({
+        email: trimmedEmail,
+        password: password,
+      });
+
+      if (response.success && response.data) {
+        await setToken(response.data.token);
+        setUser(response.data.user);
+        navigation.replace('Onboarding');
       } else {
-        throw new Error(response.error || 'Failed to send OTP');
+        Alert.alert('Sign In Failed', response.error || 'Invalid email or password');
       }
     } catch (error: any) {
-      Alert.alert(
-        'Error',
-        error.message || 'Failed to send OTP. Please check your Supabase email configuration.'
-      );
+      Alert.alert('Error', error.message || 'Failed to sign in. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -82,13 +84,35 @@ export default function LoginScreen({ navigation }: Props) {
           />
         </View>
 
+        <View style={styles.inputContainer}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your password"
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={password}
+            onChangeText={setPassword}
+          />
+        </View>
+
         <TouchableOpacity
           style={[styles.button, isLoading && styles.buttonDisabled]}
           onPress={handleLogin}
-          disabled={isLoading || !email.trim()}
+          disabled={isLoading || !email.trim() || !password.trim()}
         >
           <Text style={styles.buttonText}>
-            {isLoading ? 'Sending OTP...' : 'Continue'}
+            {isLoading ? 'Signing In...' : 'Sign In'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate('SignUp')}
+          style={styles.linkButton}
+        >
+          <Text style={styles.linkText}>
+            Don't have an account? <Text style={styles.linkTextBold}>Sign Up</Text>
           </Text>
         </TouchableOpacity>
 
@@ -161,6 +185,18 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  linkButton: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  linkText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  linkTextBold: {
+    color: '#10b981',
+    fontWeight: '600',
   },
 });
 

@@ -140,6 +140,7 @@ export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
   Login: undefined;
+  SignUp: undefined;
   OTP: { email: string };
   Onboarding: undefined;
   KYC: undefined;
@@ -158,6 +159,7 @@ export type RootStackParamList = {
   EnergyChart: undefined;
   TradingBot: undefined;
   TopUp: undefined;
+  Withdraw: undefined;
 };
 
 export type MainTabParamList = {

@@ -10,6 +10,17 @@ export interface VerifyOTPRequest {
   otp: string;
 }
 
+export interface SignUpRequest {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+export interface SignInRequest {
+  email: string;
+  password: string;
+}
+
 export interface AuthResponse {
   user: User;
   token: string;
@@ -26,20 +37,32 @@ class SupabaseAuthService {
   async sendOTP(data: SendOTPRequest): Promise<ApiResponse<{ message: string }>> {
     try {
       // Use signInWithOtp to send OTP code
-      // Note: Supabase settings must have "Confirm email" disabled for OTP to work
+      // CRITICAL: Supabase email template must use {{ .Token }} not {{ .ConfirmationURL }}
+      // If template uses ConfirmationURL, Supabase will send magic link instead of OTP
+      // Also, emailRedirectTo must be explicitly set to null/undefined to force OTP mode
       const { data: authData, error } = await supabase.auth.signInWithOtp({
         email: data.email.toLowerCase().trim(),
         options: {
           shouldCreateUser: true, // Allow new users to be created
-          // Don't set emailRedirectTo to ensure OTP is sent, not magic link
+          emailRedirectTo: undefined, // Explicitly set to undefined to force OTP (not magic link)
         },
       });
 
       if (error) {
         console.error('Supabase OTP error:', error);
+        
+        // Provide helpful error message based on error type
+        let errorMessage = error.message || 'Failed to send OTP.';
+        
+        if (error.message?.includes('magic link')) {
+          errorMessage = 'Email template is configured for magic link. Please update Supabase email template to use {{ .Token }} instead of {{ .ConfirmationURL }}. See FIX_OTP_EMAIL_ISSUE.md for details.';
+        } else if (error.message?.includes('email')) {
+          errorMessage = 'Email sending failed. Please check Supabase email configuration and SMTP settings.';
+        }
+        
         return {
           success: false,
-          error: error.message || 'Failed to send OTP. Please check your email configuration in Supabase.',
+          error: errorMessage,
         };
       }
 
@@ -150,6 +173,7 @@ class SupabaseAuthService {
       .insert({
         id: userId,
         email: email,
+        phone_number: null, // Set to null if not provided (column should be nullable)
         kyc_status: 'pending',
       })
       .select()
@@ -269,6 +293,101 @@ class SupabaseAuthService {
       return {
         success: false,
         error: error.message || 'Failed to logout',
+      };
+    }
+  }
+
+  /**
+   * Sign up with email and password
+   */
+  async signUp(data: SignUpRequest): Promise<ApiResponse<AuthResponse>> {
+    try {
+      const { data: authData, error } = await supabase.auth.signUp({
+        email: data.email.toLowerCase().trim(),
+        password: data.password,
+        options: {
+          data: {
+            name: data.name || '',
+          },
+        },
+      });
+
+      if (error) {
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+
+      if (!authData.user || !authData.session) {
+        return {
+          success: false,
+          error: 'Sign up failed. Please try again.',
+        };
+      }
+
+      // Get or create user profile in public.users table
+      const userProfile = await this.getOrCreateUserProfile(
+        authData.user.id,
+        data.email.toLowerCase().trim()
+      );
+
+      return {
+        success: true,
+        data: {
+          user: userProfile,
+          token: authData.session.access_token,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to sign up',
+      };
+    }
+  }
+
+  /**
+   * Sign in with email and password
+   */
+  async signIn(data: SignInRequest): Promise<ApiResponse<AuthResponse>> {
+    try {
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
+        email: data.email.toLowerCase().trim(),
+        password: data.password,
+      });
+
+      if (error) {
+        return {
+          success: false,
+          error: error.message,
+        };
+      }
+
+      if (!authData.user || !authData.session) {
+        return {
+          success: false,
+          error: 'Sign in failed. Please check your credentials.',
+        };
+      }
+
+      // Get or create user profile in public.users table
+      const userProfile = await this.getOrCreateUserProfile(
+        authData.user.id,
+        data.email.toLowerCase().trim()
+      );
+
+      return {
+        success: true,
+        data: {
+          user: userProfile,
+          token: authData.session.access_token,
+        },
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || 'Failed to sign in',
       };
     }
   }

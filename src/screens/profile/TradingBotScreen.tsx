@@ -9,7 +9,10 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { TradingBotConfig } from '@/types';
 import { MIN_SELL_PRICE, MAX_SELL_PRICE, DEFAULT_RESERVE_POWER } from '@/utils/constants';
 
@@ -67,15 +70,29 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
     ]);
   };
 
+  const priorityOptions = [
+    { value: 'neighbors' as const, label: 'Neighbors First', icon: 'home-group' },
+    { value: 'grid' as const, label: 'Grid First', icon: 'transmission-tower' },
+    { value: 'both' as const, label: 'Both', icon: 'swap-horizontal' },
+  ];
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Trading Bot (Auto-Pilot)</Text>
-          <Text style={styles.subtitle}>
-            Set and forget rules for automated energy trading
-          </Text>
+      <LinearGradient
+        colors={['#10b981', '#059669']}
+        style={styles.gradientHeader}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Trading Bot (Auto-Pilot)</Text>
+            <Text style={styles.headerSubtitle}>Set and forget rules for automated trading</Text>
+          </View>
+          <MaterialCommunityIcons name="robot" size={32} color="#ffffff" />
+        </View>
+      </LinearGradient>
 
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
           {/* Enable/Disable */}
           <View style={styles.section}>
             <View style={styles.switchRow}>
@@ -85,7 +102,12 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
                   Automatically sell excess energy based on your rules
                 </Text>
               </View>
-              <Switch value={enabled} onValueChange={setEnabled} />
+              <Switch
+                value={enabled}
+                onValueChange={setEnabled}
+                trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                thumbColor="#ffffff"
+              />
             </View>
           </View>
 
@@ -93,26 +115,27 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
             <>
               {/* Reserve Power */}
               <View style={styles.section}>
-                <Text style={styles.label}>Reserve Power</Text>
-                <Text style={styles.hint}>
-                  Keep this percentage of battery for your home use
-                </Text>
+                <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="battery-charging" size={24} color="#10b981" />
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={styles.label}>Reserve Power</Text>
+                    <Text style={styles.hint}>
+                      Keep this percentage of battery for your home use
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.sliderContainer}>
                   <Text style={styles.sliderValue}>{reservePower}%</Text>
-                  <View style={styles.sliderTrack}>
-                    <View
-                      style={[
-                        styles.sliderFill,
-                        { width: `${reservePower}%` },
-                      ]}
-                    />
-                    <View
-                      style={[
-                        styles.sliderThumb,
-                        { left: `${reservePower}%` },
-                      ]}
-                    />
-                  </View>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={0}
+                    maximumValue={100}
+                    value={reservePower}
+                    onValueChange={setReservePower}
+                    minimumTrackTintColor="#10b981"
+                    maximumTrackTintColor="#e5e7eb"
+                    thumbTintColor="#10b981"
+                  />
                   <View style={styles.sliderLabels}>
                     <Text style={styles.sliderLabel}>0%</Text>
                     <Text style={styles.sliderLabel}>100%</Text>
@@ -134,10 +157,15 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
 
               {/* Minimum Sell Price */}
               <View style={styles.section}>
-                <Text style={styles.label}>Minimum Sell Price</Text>
-                <Text style={styles.hint}>
-                  Only sell if the market price is above this amount (₹/unit)
-                </Text>
+                <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="currency-inr" size={24} color="#10b981" />
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={styles.label}>Minimum Sell Price</Text>
+                    <Text style={styles.hint}>
+                      Only sell if the market price is above this amount (₹/unit)
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.priceInputContainer}>
                   <Text style={styles.currencySymbol}>₹</Text>
                   <TextInput
@@ -158,66 +186,54 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
 
               {/* Priority */}
               <View style={styles.section}>
-                <Text style={styles.label}>Selling Priority</Text>
-                <Text style={styles.hint}>
-                  Choose where to sell your excess energy first
-                </Text>
+                <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="sort" size={24} color="#10b981" />
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={styles.label}>Selling Priority</Text>
+                    <Text style={styles.hint}>
+                      Choose where to sell your excess energy first
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.priorityOptions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.priorityOption,
-                      priority === 'neighbors' && styles.priorityOptionActive,
-                    ]}
-                    onPress={() => setPriority('neighbors')}
-                  >
-                    <Text
+                  {priorityOptions.map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
                       style={[
-                        styles.priorityOptionText,
-                        priority === 'neighbors' && styles.priorityOptionTextActive,
+                        styles.priorityOption,
+                        priority === option.value && styles.priorityOptionActive,
                       ]}
+                      onPress={() => setPriority(option.value)}
+                      activeOpacity={0.7}
                     >
-                      Neighbors First
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.priorityOption,
-                      priority === 'grid' && styles.priorityOptionActive,
-                    ]}
-                    onPress={() => setPriority('grid')}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityOptionText,
-                        priority === 'grid' && styles.priorityOptionTextActive,
-                      ]}
-                    >
-                      Grid First
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.priorityOption,
-                      priority === 'both' && styles.priorityOptionActive,
-                    ]}
-                    onPress={() => setPriority('both')}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityOptionText,
-                        priority === 'both' && styles.priorityOptionTextActive,
-                      ]}
-                    >
-                      Both
-                    </Text>
-                  </TouchableOpacity>
+                      <MaterialCommunityIcons
+                        name={option.icon as any}
+                        size={24}
+                        color={priority === option.value ? '#10b981' : '#6b7280'}
+                      />
+                      <Text
+                        style={[
+                          styles.priorityOptionText,
+                          priority === option.value && styles.priorityOptionTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
             </>
           )}
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Configuration</Text>
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
+            <LinearGradient
+              colors={['#10b981', '#059669']}
+              style={styles.saveButtonGradient}
+            >
+              <MaterialCommunityIcons name="content-save" size={20} color="#ffffff" />
+              <Text style={styles.saveButtonText}>Save Configuration</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -228,31 +244,56 @@ export default function TradingBotScreen({ navigation, config, onSave }: Props) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f0fdf4',
+  },
+  gradientHeader: {
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#d1fae5',
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
   },
   content: {
-    padding: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 32,
-    lineHeight: 20,
+    padding: 20,
   },
   section: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 20,
     padding: 20,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionHeaderText: {
+    flex: 1,
   },
   switchRow: {
     flexDirection: 'row',
@@ -264,14 +305,15 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   switchLabel: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 4,
   },
   switchHint: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6b7280',
+    lineHeight: 18,
   },
   label: {
     fontSize: 16,
@@ -280,40 +322,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   hint: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6b7280',
-    marginBottom: 16,
+    lineHeight: 18,
   },
   sliderContainer: {
     marginBottom: 16,
   },
   sliderValue: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#10b981',
     textAlign: 'center',
     marginBottom: 16,
   },
-  sliderTrack: {
-    height: 4,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 2,
-    position: 'relative',
+  slider: {
+    width: '100%',
+    height: 40,
     marginBottom: 8,
-  },
-  sliderFill: {
-    height: '100%',
-    backgroundColor: '#10b981',
-    borderRadius: 2,
-  },
-  sliderThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#10b981',
-    position: 'absolute',
-    top: -8,
-    marginLeft: -10,
   },
   sliderLabels: {
     flexDirection: 'row',
@@ -326,27 +352,30 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 12,
     fontSize: 16,
     color: '#111827',
+    backgroundColor: '#ffffff',
   },
   priceInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
   },
   currencySymbol: {
-    fontSize: 18,
+    fontSize: 20,
+    fontWeight: '600',
     color: '#6b7280',
     marginRight: 8,
   },
   priceInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
     color: '#111827',
     paddingVertical: 12,
@@ -363,30 +392,43 @@ const styles = StyleSheet.create({
   priorityOption: {
     flex: 1,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#e5e7eb',
     alignItems: 'center',
+    backgroundColor: '#ffffff',
+    gap: 8,
   },
   priorityOptionActive: {
     borderColor: '#10b981',
     backgroundColor: '#f0fdf4',
   },
   priorityOptionText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#6b7280',
+    textAlign: 'center',
   },
   priorityOptionTextActive: {
     color: '#10b981',
     fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: '#10b981',
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 8,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  saveButtonGradient: {
     paddingVertical: 16,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 24,
+    justifyContent: 'center',
+    gap: 8,
   },
   saveButtonText: {
     color: '#ffffff',
@@ -394,4 +436,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

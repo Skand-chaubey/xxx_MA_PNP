@@ -10,8 +10,11 @@ import {
   Alert,
   TextInput,
   Switch,
+  Modal,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import { RootStackParamList, Seller } from '@/types';
@@ -52,6 +55,12 @@ export default function MarketplaceScreen({ navigation }: Props) {
     radius: SEARCH_RADIUS_KM.toString(),
   });
 
+  // Default location: Pune, India
+  const DEFAULT_LOCATION = {
+    lat: 18.5204, // Pune latitude
+    lng: 73.8567, // Pune longitude
+  };
+
   // Get user location
   useEffect(() => {
     getLocation();
@@ -61,7 +70,9 @@ export default function MarketplaceScreen({ navigation }: Props) {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Location permission is required to find nearby sellers');
+        // Use default location (Pune) if permission denied
+        console.log('Location permission denied, using default location (Pune)');
+        setUserLocation(DEFAULT_LOCATION);
         return;
       }
 
@@ -73,18 +84,20 @@ export default function MarketplaceScreen({ navigation }: Props) {
           lat: location.coords.latitude,
           lng: location.coords.longitude,
         });
+      } else {
+        // Fallback to default location
+        setUserLocation(DEFAULT_LOCATION);
       }
     } catch (error: any) {
       console.error('Error getting location:', error);
-      Alert.alert('Error', 'Failed to get location. Please try again.');
+      // Use default location (Pune) on error
+      setUserLocation(DEFAULT_LOCATION);
     }
   };
 
   // Search for sellers
   const searchSellers = useCallback(async () => {
     if (!isOnline) {
-      // Load from cache if offline
-      // This would be implemented with offlineStorage
       return;
     }
 
@@ -92,7 +105,6 @@ export default function MarketplaceScreen({ navigation }: Props) {
     try {
       let results: Seller[] = [];
 
-      // Try Beckn Protocol first
       if (userLocation) {
         try {
           const becknResponse = await becknClient.search({
@@ -100,7 +112,7 @@ export default function MarketplaceScreen({ navigation }: Props) {
               domain: 'energy',
               action: 'search',
               location: {
-                city: { name: 'Mumbai' }, // This would come from reverse geocoding
+                city: { name: 'Mumbai' },
                 country: { code: 'IND' },
               },
             },
@@ -118,7 +130,6 @@ export default function MarketplaceScreen({ navigation }: Props) {
             },
           });
 
-          // Transform Beckn response to Seller format
           if (becknResponse?.message?.catalog?.['bpp/providers']) {
             results = becknResponse.message.catalog['bpp/providers'].flatMap((provider) =>
               (provider.items || []).map((item) => {
@@ -133,8 +144,8 @@ export default function MarketplaceScreen({ navigation }: Props) {
                   name: provider.descriptor?.name || 'Energy Seller',
                   location: { lat, lng },
                   pricePerUnit: parseFloat(item.descriptor?.price?.value || '0'),
-                  availableEnergy: 100, // Default, would come from actual data
-                  rating: 4.5, // Default
+                  availableEnergy: 100,
+                  rating: 4.5,
                   greenEnergy: true,
                   distance,
                 };
@@ -146,7 +157,6 @@ export default function MarketplaceScreen({ navigation }: Props) {
         }
       }
 
-      // Fallback to API search
       if (results.length === 0 && userLocation) {
         try {
           const apiResponse = await tradingService.searchSellers({
@@ -179,7 +189,6 @@ export default function MarketplaceScreen({ navigation }: Props) {
         }
       }
 
-      // Apply filters
       let filteredResults = results;
 
       if (filters.minPrice) {
@@ -206,7 +215,6 @@ export default function MarketplaceScreen({ navigation }: Props) {
         );
       }
 
-      // Sort by distance (if available) or price
       filteredResults.sort((a, b) => {
         if (a.distance !== undefined && b.distance !== undefined) {
           return a.distance - b.distance;
@@ -249,34 +257,50 @@ export default function MarketplaceScreen({ navigation }: Props) {
       key={seller.id}
       style={styles.sellerCard}
       onPress={() => handleSellerPress(seller)}
+      activeOpacity={0.7}
     >
-      <View style={styles.sellerHeader}>
+      <View style={styles.sellerCardHeader}>
         <View style={styles.sellerInfo}>
-          <Text style={styles.sellerName}>{seller.name}</Text>
+          <View style={styles.sellerNameRow}>
+            <MaterialCommunityIcons name="store" size={20} color="#10b981" />
+            <Text style={styles.sellerName}>{seller.name}</Text>
+          </View>
           {seller.distance !== undefined && (
-            <Text style={styles.sellerDistance}>{seller.distance.toFixed(1)} km away</Text>
+            <View style={styles.distanceRow}>
+              <Ionicons name="location" size={14} color="#6b7280" />
+              <Text style={styles.sellerDistance}>{seller.distance.toFixed(1)} km away</Text>
+            </View>
           )}
         </View>
         {seller.greenEnergy && (
           <View style={styles.greenBadge}>
-            <Text style={styles.greenBadgeText}>🌱 Green</Text>
+            <MaterialCommunityIcons name="leaf" size={14} color="#065f46" />
+            <Text style={styles.greenBadgeText}>Green</Text>
           </View>
         )}
       </View>
 
       <View style={styles.sellerDetails}>
         <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Price</Text>
-          <Text style={styles.detailValue}>{formatCurrency(seller.pricePerUnit)}/kWh</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Available</Text>
-          <Text style={styles.detailValue}>{formatEnergy(seller.availableEnergy, 'kWh')}</Text>
+          <View style={styles.detailItem}>
+            <MaterialCommunityIcons name="currency-inr" size={18} color="#6b7280" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Price</Text>
+              <Text style={styles.detailValue}>{formatCurrency(seller.pricePerUnit)}/kWh</Text>
+            </View>
+          </View>
+          <View style={styles.detailItem}>
+            <MaterialCommunityIcons name="lightning-bolt" size={18} color="#6b7280" />
+            <View style={styles.detailContent}>
+              <Text style={styles.detailLabel}>Available</Text>
+              <Text style={styles.detailValue}>{formatEnergy(seller.availableEnergy, 'kWh')}</Text>
+            </View>
+          </View>
         </View>
         {seller.rating !== undefined && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Rating</Text>
-            <Text style={styles.detailValue}>⭐ {seller.rating.toFixed(1)}</Text>
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={16} color="#fbbf24" />
+            <Text style={styles.ratingText}>{seller.rating.toFixed(1)}</Text>
           </View>
         )}
       </View>
@@ -284,114 +308,166 @@ export default function MarketplaceScreen({ navigation }: Props) {
   );
 
   const renderFilters = () => (
-    <View style={styles.filtersContainer}>
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Min Price (₹/kWh)</Text>
-        <TextInput
-          style={styles.filterInput}
-          value={filters.minPrice}
-          onChangeText={(text) => setFilters({ ...filters, minPrice: text })}
-          keyboardType="decimal-pad"
-          placeholder="0"
-        />
-      </View>
+    <Modal
+      visible={showFilters}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowFilters(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.filtersContainer}>
+          <View style={styles.filtersHeader}>
+            <Text style={styles.filtersTitle}>Filter Sellers</Text>
+            <TouchableOpacity onPress={() => setShowFilters(false)}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+          </View>
 
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Max Price (₹/kWh)</Text>
-        <TextInput
-          style={styles.filterInput}
-          value={filters.maxPrice}
-          onChangeText={(text) => setFilters({ ...filters, maxPrice: text })}
-          keyboardType="decimal-pad"
-          placeholder="50"
-        />
-      </View>
+          <ScrollView style={styles.filtersContent}>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Price Range</Text>
+              <View style={styles.filterRow}>
+                <View style={styles.filterInputContainer}>
+                  <Text style={styles.filterLabel}>Min Price (₹/kWh)</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    value={filters.minPrice}
+                    onChangeText={(text) => setFilters({ ...filters, minPrice: text })}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                  />
+                </View>
+                <View style={styles.filterInputContainer}>
+                  <Text style={styles.filterLabel}>Max Price (₹/kWh)</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    value={filters.maxPrice}
+                    onChangeText={(text) => setFilters({ ...filters, maxPrice: text })}
+                    keyboardType="decimal-pad"
+                    placeholder="50"
+                  />
+                </View>
+              </View>
+            </View>
 
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Search Radius (km)</Text>
-        <TextInput
-          style={styles.filterInput}
-          value={filters.radius}
-          onChangeText={(text) => setFilters({ ...filters, radius: text })}
-          keyboardType="decimal-pad"
-          placeholder="10"
-        />
-      </View>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Location</Text>
+              <View style={styles.filterInputContainer}>
+                <Text style={styles.filterLabel}>Search Radius (km)</Text>
+                <TextInput
+                  style={styles.filterInput}
+                  value={filters.radius}
+                  onChangeText={(text) => setFilters({ ...filters, radius: text })}
+                  keyboardType="decimal-pad"
+                  placeholder="10"
+                />
+              </View>
+            </View>
 
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Min Rating</Text>
-        <TextInput
-          style={styles.filterInput}
-          value={filters.minRating}
-          onChangeText={(text) => setFilters({ ...filters, minRating: text })}
-          keyboardType="decimal-pad"
-          placeholder="0"
-        />
-      </View>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Quality</Text>
+              <View style={styles.filterRow}>
+                <View style={styles.filterInputContainer}>
+                  <Text style={styles.filterLabel}>Min Rating</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    value={filters.minRating}
+                    onChangeText={(text) => setFilters({ ...filters, minRating: text })}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                  />
+                </View>
+                <View style={styles.switchRow}>
+                  <View style={styles.switchLabelContainer}>
+                    <Text style={styles.filterLabel}>Green Energy Only</Text>
+                    <Text style={styles.filterHint}>Show only renewable energy sources</Text>
+                  </View>
+                  <Switch
+                    value={filters.greenEnergyOnly}
+                    onValueChange={(value) => setFilters({ ...filters, greenEnergyOnly: value })}
+                    trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                    thumbColor="#ffffff"
+                  />
+                </View>
+              </View>
+            </View>
 
-      <View style={styles.filterRow}>
-        <Text style={styles.filterLabel}>Green Energy Only</Text>
-        <Switch
-          value={filters.greenEnergyOnly}
-          onValueChange={(value) => setFilters({ ...filters, greenEnergyOnly: value })}
-        />
+            <TouchableOpacity
+              style={styles.applyButton}
+              onPress={() => {
+                setShowFilters(false);
+                searchSellers();
+              }}
+            >
+              <LinearGradient
+                colors={['#10b981', '#059669']}
+                style={styles.applyButtonGradient}
+              >
+                <Text style={styles.applyButtonText}>Apply Filters</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </View>
-
-      <TouchableOpacity
-        style={styles.applyButton}
-        onPress={() => {
-          setShowFilters(false);
-          searchSellers();
-        }}
-      >
-        <Text style={styles.applyButtonText}>Apply Filters</Text>
-      </TouchableOpacity>
-    </View>
+    </Modal>
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Marketplace</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowFilters(!showFilters)}
-          >
-            <Text style={styles.filterButtonText}>🔍 Filters</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.viewModeButton}
-            onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-          >
-            <Text style={styles.viewModeButtonText}>
-              {viewMode === 'list' ? '🗺️ Map' : '📋 List'}
-            </Text>
-          </TouchableOpacity>
+      <LinearGradient
+        colors={['#10b981', '#059669']}
+        style={styles.gradientHeader}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Marketplace</Text>
+            <Text style={styles.subtitle}>Find Energy Near Me</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => setShowFilters(true)}
+            >
+              <Ionicons name="filter" size={20} color="#ffffff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
+            >
+              <Ionicons 
+                name={viewMode === 'list' ? 'map' : 'list'} 
+                size={20} 
+                color="#ffffff" 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
 
-      {showFilters && renderFilters()}
+      {renderFilters()}
 
       {viewMode === 'map' ? (
         <View style={styles.mapContainer}>
-          <Text style={styles.mapPlaceholder}>
-            Map view requires Mapbox credentials{'\n'}
-            Configure MAPBOX_ACCESS_TOKEN in your .env file
-          </Text>
-          <TouchableOpacity
-            style={styles.switchToListButton}
-            onPress={() => setViewMode('list')}
-          >
-            <Text style={styles.switchToListButtonText}>Switch to List View</Text>
-          </TouchableOpacity>
+          <View style={styles.mapPlaceholder}>
+            <MaterialCommunityIcons name="map" size={64} color="#d1d5db" />
+            <Text style={styles.mapPlaceholderText}>
+              Map view requires Mapbox credentials{'\n'}
+              Configure MAPBOX_ACCESS_TOKEN in your .env file
+            </Text>
+            <TouchableOpacity
+              style={styles.switchToListButton}
+              onPress={() => setViewMode('list')}
+            >
+              <Text style={styles.switchToListButtonText}>Switch to List View</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />
           }
         >
           {loading && !refreshing ? (
@@ -401,21 +477,33 @@ export default function MarketplaceScreen({ navigation }: Props) {
             </View>
           ) : sellers.length === 0 ? (
             <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="store-off" size={64} color="#d1d5db" />
               <Text style={styles.emptyText}>No sellers found</Text>
               <Text style={styles.emptySubtext}>
                 Try adjusting your filters or search radius
               </Text>
               {!userLocation && (
                 <TouchableOpacity style={styles.locationButton} onPress={getLocation}>
-                  <Text style={styles.locationButtonText}>Enable Location</Text>
+                  <LinearGradient
+                    colors={['#10b981', '#059669']}
+                    style={styles.locationButtonGradient}
+                  >
+                    <Ionicons name="location" size={20} color="#ffffff" />
+                    <Text style={styles.locationButtonText}>Enable Location</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               )}
             </View>
           ) : (
             <>
-              <Text style={styles.resultsCount}>
-                {sellers.length} seller{sellers.length !== 1 ? 's' : ''} found
-              </Text>
+              <View style={styles.resultsHeader}>
+                <Text style={styles.resultsCount}>
+                  {sellers.length} seller{sellers.length !== 1 ? 's' : ''} found
+                </Text>
+                <TouchableOpacity onPress={() => setShowFilters(true)}>
+                  <Text style={styles.filterLink}>Filter</Text>
+                </TouchableOpacity>
+              </View>
               {sellers.map(renderSellerCard)}
             </>
           )}
@@ -428,82 +516,121 @@ export default function MarketplaceScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f0fdf4',
+  },
+  gradientHeader: {
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#d1fae5',
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  viewModeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
-  },
-  viewModeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
   filtersContainer: {
     backgroundColor: '#ffffff',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
   },
-  filterRow: {
+  filtersHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  filtersTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  filtersContent: {
+    padding: 20,
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  filterRow: {
+    gap: 12,
+  },
+  filterInputContainer: {
     marginBottom: 16,
   },
   filterLabel: {
     fontSize: 14,
     fontWeight: '500',
     color: '#374151',
-    flex: 1,
+    marginBottom: 8,
+  },
+  filterHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
   },
   filterInput: {
-    flex: 1,
     borderWidth: 1,
     borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 8,
-    fontSize: 14,
-    textAlign: 'right',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
     backgroundColor: '#ffffff',
   },
-  applyButton: {
-    backgroundColor: '#10b981',
-    paddingVertical: 12,
-    borderRadius: 8,
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 8,
+  },
+  switchLabelContainer: {
+    flex: 1,
+  },
+  applyButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  applyButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
   applyButtonText: {
     color: '#ffffff',
@@ -514,7 +641,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    padding: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -537,42 +664,59 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#374151',
+    marginTop: 16,
     marginBottom: 8,
   },
   emptySubtext: {
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
+    marginBottom: 24,
   },
   locationButton: {
-    marginTop: 16,
-    paddingHorizontal: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  locationButtonGradient: {
     paddingVertical: 12,
-    backgroundColor: '#10b981',
-    borderRadius: 8,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   locationButtonText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },
-  resultsCount: {
-    fontSize: 14,
-    color: '#6b7280',
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
+  },
+  resultsCount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  filterLink: {
+    fontSize: 14,
+    color: '#10b981',
+    fontWeight: '600',
   },
   sellerCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  sellerHeader: {
+  sellerCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -581,21 +725,34 @@ const styles = StyleSheet.create({
   sellerInfo: {
     flex: 1,
   },
+  sellerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
   sellerName: {
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
-    marginBottom: 4,
+  },
+  distanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   sellerDistance: {
     fontSize: 12,
     color: '#6b7280',
   },
   greenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#d1fae5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
   },
   greenBadgeText: {
     fontSize: 12,
@@ -603,39 +760,64 @@ const styles = StyleSheet.create({
     color: '#065f46',
   },
   sellerDetails: {
-    gap: 8,
+    gap: 12,
   },
   detailRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 16,
+  },
+  detailItem: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  detailContent: {
+    flex: 1,
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6b7280',
+    marginBottom: 2,
   },
   detailValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#111827',
   },
   mapContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#f3f4f6',
   },
   mapPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  mapPlaceholderText: {
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
-    marginBottom: 16,
+    marginTop: 16,
+    marginBottom: 24,
+    lineHeight: 20,
   },
   switchToListButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
     backgroundColor: '#10b981',
-    borderRadius: 8,
+    borderRadius: 12,
   },
   switchToListButtonText: {
     color: '#ffffff',
@@ -643,4 +825,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
