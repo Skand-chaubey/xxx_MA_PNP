@@ -263,7 +263,7 @@ export default function KYCScreen({ navigation }: Props) {
 
                 <TouchableOpacity
                   style={styles.documentButton}
-                  onPress={() => handleDocumentSelect('pan')}
+                  onPress={() => navigation.navigate('PANScan')}
                   activeOpacity={0.7}
                 >
                   <LinearGradient

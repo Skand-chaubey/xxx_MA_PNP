@@ -21,6 +21,7 @@ import ProfileScreen from '@/screens/profile/ProfileScreen';
 // KYC & Meter Screens
 import KYCScreen from '@/screens/kyc/KYCScreen';
 import AadhaarScanScreen from '@/screens/kyc/AadhaarScanScreen';
+import PANScanScreen from '@/screens/kyc/PANScanScreen';
 import MeterRegistrationScreen from '@/screens/meter/MeterRegistrationScreen';
 
 // Trading Screens
@@ -151,6 +152,11 @@ export const AppNavigator = () => {
             <RootStack.Screen
               name="AadhaarScan"
               component={AadhaarScanScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <RootStack.Screen
+              name="PANScan"
+              component={PANScanScreen}
               options={{ presentation: 'modal' }}
             />
             <RootStack.Screen

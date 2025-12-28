@@ -149,6 +149,7 @@ export type RootStackParamList = {
   Onboarding: undefined;
   KYC: undefined;
   AadhaarScan: undefined;
+  PANScan: undefined;
   MeterRegistration: { isHardwareRequest?: boolean } | undefined;
   MeterStatus: undefined;
   Home: undefined;
