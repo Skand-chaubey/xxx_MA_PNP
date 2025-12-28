@@ -20,28 +20,40 @@ import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/service
 import { useKYCStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 
-type PANScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'PANScan'>;
+type ElectricityBillScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ElectricityBillScan'>;
 
 interface Props {
-  navigation: PANScanScreenNavigationProp;
+  navigation: ElectricityBillScanScreenNavigationProp;
 }
 
-interface ExtractedPANData {
-  fullName: string;
-  panNumber: string;
-  dateOfBirth: string;
-  fatherName: string;
+interface ExtractedBillData {
+  consumerName: string;
+  consumerNumber: string;
+  meterNumber: string;
+  discomName: string;
+  billingPeriod: string;
+  billDate: string;
+  dueDate: string;
+  unitsConsumed: string;
+  billAmount: string;
+  serviceAddress: string;
 }
 
-export default function PANScanScreen({ navigation }: Props) {
+export default function ElectricityBillScanScreen({ navigation }: Props) {
   const { setKYCData } = useKYCStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [extractedData, setExtractedData] = useState<ExtractedPANData>({
-    fullName: '',
-    panNumber: '',
-    dateOfBirth: '',
-    fatherName: '',
+  const [extractedData, setExtractedData] = useState<ExtractedBillData>({
+    consumerName: '',
+    consumerNumber: '',
+    meterNumber: '',
+    discomName: '',
+    billingPeriod: '',
+    billDate: '',
+    dueDate: '',
+    unitsConsumed: '',
+    billAmount: '',
+    serviceAddress: '',
   });
   const [showForm, setShowForm] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
@@ -58,9 +70,9 @@ export default function PANScanScreen({ navigation }: Props) {
   }, []);
 
   /**
-   * Format DOB with slashes: DD/MM/YYYY
+   * Format date with slashes: DD/MM/YYYY
    */
-  const formatDOB = (text: string): string => {
+  const formatDate = (text: string): string => {
     // Remove all non-digits
     const digitsOnly = text.replace(/\D/g, '');
     
@@ -78,271 +90,274 @@ export default function PANScanScreen({ navigation }: Props) {
   };
 
   /**
-   * Format PAN number: uppercase, alphanumeric only
+   * Format numeric input (for units and amount)
    */
-  const formatPAN = (text: string): string => {
-    // Remove non-alphanumeric characters and convert to uppercase
-    return text.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10);
+  const formatNumeric = (text: string): string => {
+    // Remove all non-numeric characters except decimal point
+    return text.replace(/[^0-9.]/g, '');
   };
 
   /**
-   * STRICT PAN data extraction - ONLY fill if explicitly detected
+   * STRICT Electricity Bill data extraction - ONLY fill if explicitly detected
    * DO NOT guess, infer, or fabricate any data
    */
-  const extractPANData = (ocrText: string): ExtractedPANData => {
+  const extractBillData = (ocrText: string): ExtractedBillData => {
     // Initialize with empty data - fields remain empty unless explicitly detected
-    const data: ExtractedPANData = {
-      fullName: '',
-      panNumber: '',
-      dateOfBirth: '',
-      fatherName: '',
+    const data: ExtractedBillData = {
+      consumerName: '',
+      consumerNumber: '',
+      meterNumber: '',
+      discomName: '',
+      billingPeriod: '',
+      billDate: '',
+      dueDate: '',
+      unitsConsumed: '',
+      billAmount: '',
+      serviceAddress: '',
     };
 
     const lines = ocrText.split('\n');
-    
+    const upperText = ocrText.toUpperCase();
+
     // ============================================
-    // A. PAN NUMBER - STRICT DETECTION ONLY
+    // A. DISCOM / ELECTRICITY PROVIDER DETECTION
     // ============================================
-    // PAN format: 5 letters + 4 digits + 1 letter (e.g., ABCDE1234F)
-    const panRegex = /[A-Z]{5}[0-9]{4}[A-Z]/gi;
-    
-    // Priority 1: Find PAN on its own line
-    for (const line of lines) {
-      const trimmedLine = line.trim().toUpperCase();
-      const panMatch = trimmedLine.match(/^([A-Z]{5}[0-9]{4}[A-Z])$/);
-      if (panMatch) {
-        data.panNumber = panMatch[1];
+    const discomPatterns = [
+      { pattern: /MSEDCL|MAHARASHTRA STATE ELECTRICITY/i, name: 'MSEDCL' },
+      { pattern: /TATA POWER/i, name: 'Tata Power' },
+      { pattern: /ADANI ELECTRICITY/i, name: 'Adani Electricity' },
+      { pattern: /BSES RAJDHANI/i, name: 'BSES Rajdhani' },
+      { pattern: /BSES YAMUNA/i, name: 'BSES Yamuna' },
+      { pattern: /NDPL|NORTH DELHI POWER/i, name: 'NDPL' },
+      { pattern: /BESCOM|BANGALORE ELECTRICITY/i, name: 'BESCOM' },
+      { pattern: /CESC/i, name: 'CESC' },
+      { pattern: /PSPCL|PUNJAB STATE POWER/i, name: 'PSPCL' },
+      { pattern: /UPPCL|UTTAR PRADESH POWER/i, name: 'UPPCL' },
+      { pattern: /DHBVN|DAKSHIN HARYANA/i, name: 'DHBVN' },
+      { pattern: /UHBVN|UTTAR HARYANA/i, name: 'UHBVN' },
+      { pattern: /KSEB|KERALA STATE ELECTRICITY/i, name: 'KSEB' },
+      { pattern: /TANGEDCO|TAMIL NADU GENERATION/i, name: 'TANGEDCO' },
+      { pattern: /APSPDCL|ANDHRA PRADESH/i, name: 'APSPDCL' },
+      { pattern: /TSSPDCL|TELANGANA/i, name: 'TSSPDCL' },
+      { pattern: /WBSEDCL|WEST BENGAL/i, name: 'WBSEDCL' },
+      { pattern: /GETCO|GUJARAT ENERGY/i, name: 'GETCO' },
+      { pattern: /MGVCL|MADHYA GUJARAT/i, name: 'MGVCL' },
+      { pattern: /PGVCL|PASCHIM GUJARAT/i, name: 'PGVCL' },
+      { pattern: /DGVCL|DAKSHIN GUJARAT/i, name: 'DGVCL' },
+      { pattern: /UGVCL|UTTAR GUJARAT/i, name: 'UGVCL' },
+      { pattern: /JVVNL|JAIPUR VIDYUT/i, name: 'JVVNL' },
+      { pattern: /AVVNL|AJMER VIDYUT/i, name: 'AVVNL' },
+      { pattern: /JDVVNL|JODHPUR VIDYUT/i, name: 'JDVVNL' },
+    ];
+
+    for (const discom of discomPatterns) {
+      if (discom.pattern.test(ocrText)) {
+        data.discomName = discom.name;
         break;
       }
     }
-    
-    // Priority 2: Find PAN anywhere in text
-    if (!data.panNumber) {
-      const allMatches = ocrText.toUpperCase().match(panRegex);
-      if (allMatches && allMatches.length > 0) {
-        // Use the first valid PAN found
-        data.panNumber = allMatches[0].toUpperCase();
-      }
-    }
-    
-    // Priority 3: Find PAN with label
-    if (!data.panNumber) {
-      const panWithLabel = ocrText.toUpperCase().match(/(?:PAN|PERMANENT ACCOUNT NUMBER)\s*:?\s*([A-Z]{5}[0-9]{4}[A-Z])/i);
-      if (panWithLabel && panWithLabel[1]) {
-        data.panNumber = panWithLabel[1].toUpperCase();
-      }
-    }
-
-    if (__DEV__ && data.panNumber) {
-      console.log('✅ PAN number detected:', data.panNumber);
-    }
 
     // ============================================
-    // B. FULL NAME - STRICT DETECTION ONLY
+    // B. CONSUMER NUMBER / ACCOUNT NUMBER DETECTION
     // ============================================
-    // List of text to EXCLUDE from name extraction
-    const excludePatterns = [
-      /INCOME TAX DEPARTMENT/i,
-      /GOVT\.?\s*OF\s*INDIA/i,
-      /GOVERNMENT OF INDIA/i,
-      /PERMANENT ACCOUNT NUMBER/i,
-      /आयकर विभाग/,
-      /भारत सरकार/,
-      /स्थायी खाता संख्या/,
-      /SIGNATURE/i,
-      /^PAN$/i,
-      /^CARD$/i,
-      /^(Male|Female|M|F)$/i,
+    // Look for patterns like "Consumer No", "Account No", "CA No", "K No"
+    const consumerPatterns = [
+      /(?:CONSUMER\s*(?:NO|NUMBER|ID)|CA\s*(?:NO|NUMBER)|ACCOUNT\s*(?:NO|NUMBER)|K\s*(?:NO|NUMBER))[:\s]*([A-Z0-9]{6,20})/i,
+      /(?:CONSUMER|CA|ACCOUNT|K)[\s:]*([0-9]{8,15})/i,
     ];
-    
-    const shouldExclude = (text: string): boolean => {
-      const trimmedText = text.trim();
-      return excludePatterns.some(pattern => pattern.test(trimmedText));
-    };
-    
-    // Pattern 1: Look for "Name" label (English or Hindi)
-    const nameWithLabel = ocrText.match(/(?:Name|नाम|NAME)\s*[:\s]\s*([A-Za-z\s]{3,50}?)(?:\n|$)/i);
-    if (nameWithLabel && nameWithLabel[1]) {
-      let name = nameWithLabel[1].trim();
-      if (name.length >= 3 && !shouldExclude(name) && /[A-Za-z]/.test(name)) {
-        data.fullName = name.toUpperCase();
+
+    for (const pattern of consumerPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.consumerNumber = match[1].trim();
+        break;
       }
     }
-    
-    // Pattern 2: Find name after specific PAN card text
-    if (!data.fullName) {
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        
-        // Check if this line contains "Permanent Account Number" or similar
-        if (/Permanent Account Number|PERMANENT ACCOUNT NUMBER|स्थायी खाता संख्या/i.test(line)) {
-          // Look at next few lines for name
-          for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-            const nextLine = lines[j].trim();
-            
-            // Skip empty, date, PAN number lines
-            if (!nextLine) continue;
-            if (/\d{2}[-\/]\d{2}[-\/]\d{4}/.test(nextLine)) continue;
-            if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(nextLine.toUpperCase())) continue;
-            if (shouldExclude(nextLine)) continue;
-            
-            // Match name: 2-4 words, each 2+ characters
-            const namePattern = /^([A-Za-z]{2,}(?:\s+[A-Za-z]{2,}){0,3})$/;
-            const match = nextLine.match(namePattern);
-            if (match && match[1] && match[1].length >= 3) {
-              data.fullName = match[1].trim().toUpperCase();
-              if (__DEV__) {
-                console.log('✅ Name found via Pattern 2:', data.fullName);
-              }
-              break;
-            }
-          }
-          if (data.fullName) break;
-        }
+
+    // ============================================
+    // C. METER NUMBER DETECTION
+    // ============================================
+    const meterPatterns = [
+      /(?:METER\s*(?:NO|NUMBER|SR\.?\s*NO)|METER\s*ID)[:\s]*([A-Z0-9]{6,20})/i,
+      /(?:M\.?\s*NO|METER)[:\s]*([0-9]{8,15})/i,
+    ];
+
+    for (const pattern of meterPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.meterNumber = match[1].trim();
+        break;
       }
     }
-    
-    // Pattern 3: All-caps name on its own line (fallback)
-    if (!data.fullName) {
-      for (let i = 2; i < Math.min(lines.length, 15); i++) {
-        const trimmedLine = lines[i].trim();
-        
-        if (!trimmedLine) continue;
-        if (shouldExclude(trimmedLine)) continue;
-        if (/^\d+$/.test(trimmedLine)) continue;
-        if (/\d{2}[-\/]\d{2}[-\/]\d{4}/.test(trimmedLine)) continue;
-        if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(trimmedLine.toUpperCase())) continue;
-        
-        // Match name pattern: 1-4 words, each 2+ characters
-        const namePattern = /^([A-Z]{2,}(?:\s+[A-Z]{2,}){0,3})$/;
-        const match = trimmedLine.match(namePattern);
-        if (match && match[1] && match[1].length >= 3) {
-          data.fullName = match[1].trim();
-          if (__DEV__) {
-            console.log('✅ Name found via Pattern 3:', data.fullName);
-          }
+
+    // ============================================
+    // D. CONSUMER NAME DETECTION
+    // ============================================
+    const namePatterns = [
+      /(?:CONSUMER\s*NAME|NAME\s*OF\s*CONSUMER|NAME)[:\s]*([A-Z][A-Z\s\.]{2,50})/i,
+      /(?:ACCOUNT\s*HOLDER|CUSTOMER\s*NAME)[:\s]*([A-Z][A-Z\s\.]{2,50})/i,
+    ];
+
+    for (const pattern of namePatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        // Filter out common non-name text
+        if (!/(ADDRESS|METER|BILL|DATE|AMOUNT|UNIT)/i.test(name)) {
+          data.consumerName = name;
           break;
         }
       }
     }
 
     // ============================================
-    // C. FATHER'S NAME - STRICT DETECTION ONLY
+    // E. BILLING PERIOD DETECTION
     // ============================================
-    // Pattern 1: Look for "Father's Name" label
-    const fatherWithLabel = ocrText.match(/(?:Father(?:'s)?\s*Name|पिता का नाम)\s*[:\s]\s*([A-Za-z\s]{3,50}?)(?:\n|$)/i);
-    if (fatherWithLabel && fatherWithLabel[1]) {
-      let fatherName = fatherWithLabel[1].trim();
-      if (fatherName.length >= 3 && !shouldExclude(fatherName) && /[A-Za-z]/.test(fatherName)) {
-        data.fatherName = fatherName.toUpperCase();
-        if (__DEV__) {
-          console.log('✅ Father name found:', data.fatherName);
+    const billingPatterns = [
+      /(?:BILLING\s*PERIOD|BILL\s*PERIOD|PERIOD)[:\s]*([A-Z]{3,9}\s*\d{2,4}\s*[-–TO]*\s*[A-Z]{3,9}\s*\d{2,4})/i,
+      /(?:FROM|PERIOD)[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})\s*(?:TO|[-–])\s*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})/i,
+    ];
+
+    for (const pattern of billingPatterns) {
+      const match = ocrText.match(pattern);
+      if (match) {
+        if (match[2]) {
+          data.billingPeriod = `${match[1]} - ${match[2]}`;
+        } else if (match[1]) {
+          data.billingPeriod = match[1].trim();
         }
-      }
-    }
-    
-    // Pattern 2: Line after the cardholder name (on PAN cards, father's name usually follows)
-    if (!data.fatherName && data.fullName) {
-      const nameIndex = lines.findIndex(line => 
-        line.trim().toUpperCase() === data.fullName || 
-        line.trim().toUpperCase().includes(data.fullName)
-      );
-      
-      if (nameIndex !== -1 && nameIndex < lines.length - 1) {
-        for (let j = nameIndex + 1; j < Math.min(nameIndex + 3, lines.length); j++) {
-          const nextLine = lines[j].trim();
-          
-          if (!nextLine) continue;
-          if (/\d{2}[-\/]\d{2}[-\/]\d{4}/.test(nextLine)) continue;
-          if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(nextLine.toUpperCase())) continue;
-          if (shouldExclude(nextLine)) continue;
-          
-          // Match name pattern
-          const namePattern = /^([A-Z]{2,}(?:\s+[A-Z]{2,}){0,3})$/;
-          const match = nextLine.toUpperCase().match(namePattern);
-          if (match && match[1] && match[1].length >= 3 && match[1] !== data.fullName) {
-            data.fatherName = match[1].trim();
-            if (__DEV__) {
-              console.log('✅ Father name found via Pattern 2:', data.fatherName);
-            }
-            break;
-          }
-        }
+        break;
       }
     }
 
     // ============================================
-    // D. DATE OF BIRTH - STRICT DETECTION ONLY
+    // F. BILL DATE DETECTION
     // ============================================
-    // Pattern 1: Date with "DOB" or "Date of Birth" label
-    const dobWithLabel = ocrText.match(/(?:DOB|Date of Birth|जन्म तिथि|Birth)\s*[:\s]\s*(\d{2})[-\/](\d{2})[-\/](\d{4})\b/i);
-    if (dobWithLabel) {
-      const day = dobWithLabel[1];
-      const month = dobWithLabel[2];
-      const year = dobWithLabel[3];
-      // Strict validation
-      if (parseInt(day) >= 1 && parseInt(day) <= 31 &&
-          parseInt(month) >= 1 && parseInt(month) <= 12 &&
-          parseInt(year) >= 1900 && parseInt(year) <= 2099) {
-        data.dateOfBirth = `${day}/${month}/${year}`;
-        if (__DEV__) {
-          console.log('✅ DOB found via Pattern 1:', data.dateOfBirth);
+    const billDatePatterns = [
+      /(?:BILL\s*DATE|BILLING\s*DATE|DATE\s*OF\s*BILL)[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})/i,
+      /(?:ISSUE\s*DATE|DATED)[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})/i,
+    ];
+
+    for (const pattern of billDatePatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.billDate = match[1].replace(/-/g, '/');
+        break;
+      }
+    }
+
+    // ============================================
+    // G. DUE DATE DETECTION
+    // ============================================
+    const dueDatePatterns = [
+      /(?:DUE\s*DATE|PAYMENT\s*DUE|LAST\s*DATE)[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})/i,
+      /(?:PAY\s*BY|PAY\s*BEFORE)[:\s]*(\d{2}[\/\-]\d{2}[\/\-]\d{2,4})/i,
+    ];
+
+    for (const pattern of dueDatePatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.dueDate = match[1].replace(/-/g, '/');
+        break;
+      }
+    }
+
+    // ============================================
+    // H. UNITS CONSUMED DETECTION
+    // ============================================
+    const unitsPatterns = [
+      /(?:UNITS?\s*CONSUMED|CONSUMPTION|TOTAL\s*UNITS?|KWH\s*CONSUMED)[:\s]*(\d+(?:\.\d+)?)\s*(?:KWH|UNITS?)?/i,
+      /(\d+(?:\.\d+)?)\s*(?:KWH|UNITS)\s*(?:CONSUMED|CONSUMPTION)/i,
+    ];
+
+    for (const pattern of unitsPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.unitsConsumed = match[1];
+        break;
+      }
+    }
+
+    // ============================================
+    // I. BILL AMOUNT DETECTION
+    // ============================================
+    const amountPatterns = [
+      /(?:TOTAL\s*AMOUNT|AMOUNT\s*PAYABLE|NET\s*AMOUNT|CURRENT\s*BILL\s*AMOUNT|AMOUNT\s*DUE)[:\s]*(?:RS\.?|₹|INR)?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+      /(?:RS\.?|₹|INR)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:TOTAL|PAYABLE|DUE)/i,
+      /(?:BILL\s*AMOUNT)[:\s]*(?:RS\.?|₹|INR)?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+    ];
+
+    for (const pattern of amountPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        data.billAmount = match[1].replace(/,/g, '');
+        break;
+      }
+    }
+
+    // ============================================
+    // J. SERVICE ADDRESS DETECTION
+    // ============================================
+    const addressPatterns = [
+      /(?:SERVICE\s*ADDRESS|SUPPLY\s*ADDRESS|PREMISES\s*ADDRESS|ADDRESS)[:\s]*([A-Z0-9][A-Z0-9\s,\.\-\/]{10,150})/i,
+    ];
+
+    for (const pattern of addressPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        const address = match[1].trim();
+        // Filter out non-address text
+        if (!/(CONSUMER\s*NO|METER\s*NO|BILL\s*DATE)/i.test(address)) {
+          data.serviceAddress = address;
+          break;
         }
       }
     }
-    
-    // Pattern 2: Date on its own line
-    if (!data.dateOfBirth) {
-      for (const line of lines.slice(2, 15)) {
-        const trimmedLine = line.trim();
-        const dateMatch = trimmedLine.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})$/);
-        if (dateMatch) {
-          const day = dateMatch[1];
-          const month = dateMatch[2];
-          const year = dateMatch[3];
-          // Strict validation
-          if (parseInt(day) >= 1 && parseInt(day) <= 31 &&
-              parseInt(month) >= 1 && parseInt(month) <= 12 &&
-              parseInt(year) >= 1900 && parseInt(year) <= 2099) {
-            data.dateOfBirth = `${day}/${month}/${year}`;
-            if (__DEV__) {
-              console.log('✅ DOB found via Pattern 2:', data.dateOfBirth);
-            }
-            break;
-          }
-        }
-      }
+
+    // Log extraction results in dev mode
+    if (__DEV__) {
+      console.log('📊 Bill Extraction Results:', {
+        discom: data.discomName ? 'Found' : 'Not detected',
+        consumer: data.consumerNumber ? 'Found' : 'Not detected',
+        meter: data.meterNumber ? 'Found' : 'Not detected',
+        name: data.consumerName ? 'Found' : 'Not detected',
+        period: data.billingPeriod ? 'Found' : 'Not detected',
+        billDate: data.billDate ? 'Found' : 'Not detected',
+        dueDate: data.dueDate ? 'Found' : 'Not detected',
+        units: data.unitsConsumed ? 'Found' : 'Not detected',
+        amount: data.billAmount ? 'Found' : 'Not detected',
+        address: data.serviceAddress ? 'Found' : 'Not detected',
+      });
     }
 
     return data;
   };
 
   /**
-   * Handle image upload
+   * Handle image upload button press
    */
   const handleUploadImage = async () => {
-    // Check if running in Expo Go - show warning but still allow upload
+    // If running in Expo Go, show warning and offer manual entry
     if (isExpoGo) {
       Alert.alert(
         'Development Build Required',
         'Document scanning requires a development build.\n\n' +
-        'OCR will not work in Expo Go, but you can still upload an image and enter details manually.\n\n' +
-        'To enable OCR:\n' +
-        '• Run: npx expo prebuild\n' +
-        '• Run: npx expo run:android',
+        'Please enter bill details manually.',
         [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
           {
             text: 'Enter Manually',
             onPress: () => {
               setExtractedData({
-                fullName: '',
-                panNumber: '',
-                dateOfBirth: '',
-                fatherName: '',
+                consumerName: '',
+                consumerNumber: '',
+                meterNumber: '',
+                discomName: '',
+                billingPeriod: '',
+                billDate: '',
+                dueDate: '',
+                unitsConsumed: '',
+                billAmount: '',
+                serviceAddress: '',
               });
               setShowForm(true);
               setIsManualEntry(true);
@@ -368,13 +383,13 @@ export default function PANScanScreen({ navigation }: Props) {
       // Request media library permissions first
       const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (mediaLibraryStatus.status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant media library permissions to upload PAN image.');
+        Alert.alert('Permission Required', 'Please grant media library permissions to upload electricity bill image.');
         return;
       }
 
       // Show image picker options
       Alert.alert(
-        'Select PAN Card Image',
+        'Select Electricity Bill Image',
         'Choose an option',
         [
           {
@@ -437,11 +452,17 @@ export default function PANScanScreen({ navigation }: Props) {
     // ============================================
     // STEP 1: HARD RESET (MANDATORY)
     // ============================================
-    const emptyData: ExtractedPANData = {
-      fullName: '',
-      panNumber: '',
-      dateOfBirth: '',
-      fatherName: '',
+    const emptyData: ExtractedBillData = {
+      consumerName: '',
+      consumerNumber: '',
+      meterNumber: '',
+      discomName: '',
+      billingPeriod: '',
+      billDate: '',
+      dueDate: '',
+      unitsConsumed: '',
+      billAmount: '',
+      serviceAddress: '',
     };
     
     // Reset ALL state variables
@@ -464,19 +485,19 @@ export default function PANScanScreen({ navigation }: Props) {
         if (fileInfo.exists) {
           await FileSystem.deleteAsync(filePath, { idempotent: true });
           if (__DEV__) {
-            console.log('🗑️ PAN image file deleted (security)');
+            console.log('🗑️ Bill image file deleted (security)');
           }
         }
       } catch (deleteError) {
         if (__DEV__) {
-          console.warn('⚠️ Could not delete PAN image file:', deleteError);
+          console.warn('⚠️ Could not delete bill image file:', deleteError);
         }
       }
     };
 
     try {
       if (__DEV__) {
-        console.log('📸 Processing PAN image for OCR...');
+        console.log('📸 Processing electricity bill image for OCR...');
       }
 
       // Try to perform OCR
@@ -485,14 +506,14 @@ export default function PANScanScreen({ navigation }: Props) {
         ocrResult = await ocrService.recognizeText(uri);
         
         if (__DEV__) {
-          console.log('✅ PAN OCR Success! Text extracted (length:', ocrResult.text.length, 'chars)');
+          console.log('✅ Bill OCR Success! Text extracted (length:', ocrResult.text.length, 'chars)');
         }
       } catch (ocrError: any) {
         // CRITICAL: Delete image before showing error
         await deleteImage();
 
         if (__DEV__) {
-          console.error('❌ PAN OCR Error:', ocrError?.name || 'Unknown');
+          console.error('❌ Bill OCR Error:', ocrError?.name || 'Unknown');
         }
         
         // Handle Expo Go detection
@@ -503,7 +524,7 @@ export default function PANScanScreen({ navigation }: Props) {
             'Please use the PowerNetPro app or create a development build:\n\n' +
             '1. Run: npx expo prebuild\n' +
             '2. Run: npx expo run:android\n\n' +
-            'You can manually enter your PAN details below.',
+            'You can manually enter your bill details below.',
             [{ text: 'Enter Manually', style: 'default' }]
           );
           setExtractedData(emptyData);
@@ -518,7 +539,7 @@ export default function PANScanScreen({ navigation }: Props) {
           Alert.alert(
             'OCR Failed',
             'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your PAN details below.',
+            'Please manually enter your bill details below.',
             [{ text: 'Enter Manually', style: 'default' }]
           );
           setExtractedData(emptyData);
@@ -547,27 +568,13 @@ export default function PANScanScreen({ navigation }: Props) {
       const ocrText = ocrResult.text;
       
       if (__DEV__) {
-        console.log('✅ PAN OCR Success! Text extracted (length:', ocrText.length, 'chars)');
+        console.log('✅ Bill OCR Success! Text extracted (length:', ocrText.length, 'chars)');
       }
       
-      const extracted = extractPANData(ocrText);
-      
-      // Validate PAN number format
-      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-      if (extracted.panNumber && !panRegex.test(extracted.panNumber)) {
-        extracted.panNumber = '';
-        if (__DEV__) {
-          console.warn('⚠️ Invalid PAN format detected, clearing');
-        }
-      }
+      const extracted = extractBillData(ocrText);
       
       if (__DEV__) {
-        console.log('📊 PAN Extraction Results:', {
-          name: extracted.fullName ? 'Found' : 'Not detected',
-          pan: extracted.panNumber ? 'Found' : 'Not detected',
-          dob: extracted.dateOfBirth ? 'Found' : 'Not detected',
-          fatherName: extracted.fatherName ? 'Found' : 'Not detected',
-        });
+        console.log('📊 Bill Extraction Complete');
       }
 
       // ============================================
@@ -576,9 +583,9 @@ export default function PANScanScreen({ navigation }: Props) {
       setExtractedData(extracted);
       setShowForm(true);
       
-      // Determine if manual entry based on whether PAN number was found
-      const hasPANNumber = extracted.panNumber && panRegex.test(extracted.panNumber);
-      setIsManualEntry(!hasPANNumber);
+      // Determine if manual entry based on whether key fields were found
+      const hasKeyFields = extracted.consumerNumber || extracted.meterNumber;
+      setIsManualEntry(!hasKeyFields);
       
       // ============================================
       // STEP 4: IMAGE DELETION (SECURITY)
@@ -586,16 +593,22 @@ export default function PANScanScreen({ navigation }: Props) {
       await deleteImage();
       
       if (__DEV__) {
-        console.log('✅ PAN Form displayed with extracted data');
+        console.log('✅ Bill Form displayed with extracted data');
       }
       
       // Show success message
       setTimeout(() => {
         const extractedFields = [];
-        if (extracted.fullName) extractedFields.push('Name');
-        if (extracted.panNumber) extractedFields.push('PAN Number');
-        if (extracted.dateOfBirth) extractedFields.push('Date of Birth');
-        if (extracted.fatherName) extractedFields.push("Father's Name");
+        if (extracted.consumerName) extractedFields.push('Consumer Name');
+        if (extracted.consumerNumber) extractedFields.push('Consumer Number');
+        if (extracted.meterNumber) extractedFields.push('Meter Number');
+        if (extracted.discomName) extractedFields.push('DISCOM');
+        if (extracted.billingPeriod) extractedFields.push('Billing Period');
+        if (extracted.billDate) extractedFields.push('Bill Date');
+        if (extracted.dueDate) extractedFields.push('Due Date');
+        if (extracted.unitsConsumed) extractedFields.push('Units');
+        if (extracted.billAmount) extractedFields.push('Amount');
+        if (extracted.serviceAddress) extractedFields.push('Address');
         
         const summary = extractedFields.length > 0 
           ? `Extracted: ${extractedFields.join(', ')}`
@@ -603,7 +616,7 @@ export default function PANScanScreen({ navigation }: Props) {
         
         Alert.alert(
           'OCR Complete ✅',
-          `${summary}\nPAN: ${extracted.panNumber || 'Not found'}\n\nPlease verify and edit if needed.`,
+          `${summary}\n\nPlease verify and edit if needed.`,
           [{ text: 'OK' }]
         );
       }, 500);
@@ -613,13 +626,13 @@ export default function PANScanScreen({ navigation }: Props) {
       await deleteImage();
 
       if (__DEV__) {
-        console.error('❌ Unexpected error in PAN processImage:', error);
+        console.error('❌ Unexpected error in Bill processImage:', error);
       }
       
       Alert.alert(
         'Processing Error',
-        'An error occurred while processing the image. You can manually enter the details below.',
-        [{ text: 'OK' }]
+        'An unexpected error occurred. Please try again or enter details manually.',
+        [{ text: 'Enter Manually', style: 'default' }]
       );
       setExtractedData(emptyData);
       setShowForm(true);
@@ -634,14 +647,13 @@ export default function PANScanScreen({ navigation }: Props) {
    */
   const handleSubmit = async () => {
     if (!isConfirmed) {
-      Alert.alert('Confirmation Required', 'Please confirm that the PAN details are correct.');
+      Alert.alert('Confirmation Required', 'Please confirm that the electricity bill details are correct.');
       return;
     }
 
-    // Validate PAN number format
-    const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-    if (!extractedData.panNumber || !panRegex.test(extractedData.panNumber)) {
-      Alert.alert('Invalid PAN Number', 'Please ensure a valid PAN number is entered (e.g., ABCDE1234F).');
+    // Validate at least consumer number or meter number is present
+    if (!extractedData.consumerNumber && !extractedData.meterNumber) {
+      Alert.alert('Required Fields', 'Please enter at least Consumer Number or Meter Number.');
       return;
     }
 
@@ -651,17 +663,17 @@ export default function PANScanScreen({ navigation }: Props) {
       // Set local KYC status = PENDING (NO Supabase calls as per requirements)
       setKYCData({
         userId: 'current_user_id',
-        documentType: 'pan',
-        documentNumber: extractedData.panNumber,
-        name: extractedData.fullName || undefined,
-        dateOfBirth: extractedData.dateOfBirth || undefined,
+        documentType: 'electricity_bill',
+        documentNumber: extractedData.consumerNumber || extractedData.meterNumber,
+        name: extractedData.consumerName || undefined,
+        address: extractedData.serviceAddress || undefined,
         status: 'pending',
         submittedAt: new Date(),
       });
 
       Alert.alert(
         'Success',
-        'Your PAN details have been submitted for verification. You will be notified once verification is complete.',
+        'Your electricity bill details have been submitted for verification. You will be notified once verification is complete.',
         [
           {
             text: 'OK',
@@ -672,7 +684,7 @@ export default function PANScanScreen({ navigation }: Props) {
     } catch (error: any) {
       Alert.alert(
         'Error',
-        `Failed to submit PAN data: ${error.message || 'Unknown error'}. Please try again.`
+        `Failed to submit bill data: ${error.message || 'Unknown error'}. Please try again.`
       );
     } finally {
       setIsProcessing(false);
@@ -693,7 +705,7 @@ export default function PANScanScreen({ navigation }: Props) {
             <Ionicons name="arrow-back" size={24} color="#ffffff" />
           </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Scan PAN Card</Text>
+            <Text style={styles.headerTitle}>Scan Electricity Bill</Text>
             <Text style={styles.headerSubtitle}>Upload and extract details</Text>
           </View>
         </View>
@@ -704,9 +716,9 @@ export default function PANScanScreen({ navigation }: Props) {
           {/* Upload Section - Always visible */}
           <View style={styles.uploadSection}>
             <View style={styles.uploadIconContainer}>
-              <MaterialCommunityIcons name="card-account-details-outline" size={64} color="#10b981" />
+              <MaterialCommunityIcons name="file-document" size={64} color="#10b981" />
             </View>
-            <Text style={styles.uploadTitle}>Upload PAN Card Image</Text>
+            <Text style={styles.uploadTitle}>Upload Electricity Bill Image</Text>
             <Text style={styles.uploadSubtitle}>
               Take a clear photo or select from gallery. Ensure all text is visible.
             </Text>
@@ -736,7 +748,7 @@ export default function PANScanScreen({ navigation }: Props) {
               >
                 <Ionicons name="camera" size={24} color="#ffffff" />
                 <Text style={styles.uploadButtonText}>
-                  {imageUri ? 'Upload Another Image' : 'Upload PAN Card Image'}
+                  {imageUri ? 'Upload Another Image' : 'Upload Electricity Bill Image'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -747,10 +759,16 @@ export default function PANScanScreen({ navigation }: Props) {
                 style={styles.manualEntryButton}
                 onPress={() => {
                   setExtractedData({
-                    fullName: '',
-                    panNumber: '',
-                    dateOfBirth: '',
-                    fatherName: '',
+                    consumerName: '',
+                    consumerNumber: '',
+                    meterNumber: '',
+                    discomName: '',
+                    billingPeriod: '',
+                    billDate: '',
+                    dueDate: '',
+                    unitsConsumed: '',
+                    billAmount: '',
+                    serviceAddress: '',
                   });
                   setShowForm(true);
                   setIsManualEntry(true);
@@ -766,46 +784,86 @@ export default function PANScanScreen({ navigation }: Props) {
           {/* Form Section - Appears below upload button after OCR */}
           {showForm && (
             <View style={styles.formSection}>
-              <Text style={styles.formHelperText}>Please verify your PAN details</Text>
+              <Text style={styles.formHelperText}>Please verify your electricity bill details</Text>
 
-              {/* Full Name */}
+              {/* Consumer Name */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Full Name</Text>
+                <Text style={styles.inputLabel}>Consumer Name</Text>
                 <TextInput
                   style={styles.input}
-                  value={extractedData.fullName}
-                  onChangeText={(text) => setExtractedData({ ...extractedData, fullName: text.toUpperCase() })}
-                  placeholder="Enter full name"
+                  value={extractedData.consumerName}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, consumerName: text.toUpperCase() })}
+                  placeholder="Enter consumer name"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
                   maxLength={100}
                 />
               </View>
 
-              {/* PAN Number */}
+              {/* Consumer Number */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>PAN Number</Text>
+                <Text style={styles.inputLabel}>Consumer / Account Number *</Text>
                 <TextInput
                   style={styles.input}
-                  value={extractedData.panNumber}
-                  onChangeText={(text) => setExtractedData({ ...extractedData, panNumber: formatPAN(text) })}
-                  placeholder="Enter PAN (e.g., ABCDE1234F)"
+                  value={extractedData.consumerNumber}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, consumerNumber: text.toUpperCase() })}
+                  placeholder="Enter consumer number"
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
-                  maxLength={10}
+                  maxLength={20}
                 />
-                <Text style={styles.inputHint}>Format: 5 letters + 4 digits + 1 letter</Text>
               </View>
 
-              {/* Date of Birth */}
+              {/* Meter Number */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Date of Birth</Text>
+                <Text style={styles.inputLabel}>Meter Number *</Text>
                 <TextInput
                   style={styles.input}
-                  value={extractedData.dateOfBirth}
+                  value={extractedData.meterNumber}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, meterNumber: text.toUpperCase() })}
+                  placeholder="Enter meter number"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={20}
+                />
+                <Text style={styles.inputHint}>* At least one of Consumer Number or Meter Number is required</Text>
+              </View>
+
+              {/* DISCOM / Electricity Provider */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Electricity Provider (DISCOM)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.discomName}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, discomName: text })}
+                  placeholder="e.g., MSEDCL, Tata Power, Adani"
+                  placeholderTextColor="#9ca3af"
+                  maxLength={50}
+                />
+              </View>
+
+              {/* Billing Period */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Billing Period</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.billingPeriod}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, billingPeriod: text })}
+                  placeholder="e.g., Jan 2024 - Feb 2024"
+                  placeholderTextColor="#9ca3af"
+                  maxLength={50}
+                />
+              </View>
+
+              {/* Bill Date */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Bill Date</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.billDate}
                   onChangeText={(text) => {
-                    const formatted = formatDOB(text);
-                    setExtractedData({ ...extractedData, dateOfBirth: formatted });
+                    const formatted = formatDate(text);
+                    setExtractedData({ ...extractedData, billDate: formatted });
                   }}
                   placeholder="DD/MM/YYYY"
                   placeholderTextColor="#9ca3af"
@@ -814,17 +872,70 @@ export default function PANScanScreen({ navigation }: Props) {
                 />
               </View>
 
-              {/* Father's Name (Optional) */}
+              {/* Due Date */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Father's Name (Optional)</Text>
+                <Text style={styles.inputLabel}>Due Date</Text>
                 <TextInput
                   style={styles.input}
-                  value={extractedData.fatherName}
-                  onChangeText={(text) => setExtractedData({ ...extractedData, fatherName: text.toUpperCase() })}
-                  placeholder="Enter father's name"
+                  value={extractedData.dueDate}
+                  onChangeText={(text) => {
+                    const formatted = formatDate(text);
+                    setExtractedData({ ...extractedData, dueDate: formatted });
+                  }}
+                  placeholder="DD/MM/YYYY"
                   placeholderTextColor="#9ca3af"
-                  autoCapitalize="characters"
-                  maxLength={100}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              {/* Units Consumed */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Units Consumed (kWh)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.unitsConsumed}
+                  onChangeText={(text) => {
+                    const formatted = formatNumeric(text);
+                    setExtractedData({ ...extractedData, unitsConsumed: formatted });
+                  }}
+                  placeholder="Enter units consumed"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              {/* Bill Amount */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Bill Amount (₹)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.billAmount}
+                  onChangeText={(text) => {
+                    const formatted = formatNumeric(text);
+                    setExtractedData({ ...extractedData, billAmount: formatted });
+                  }}
+                  placeholder="Enter bill amount"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="numeric"
+                  maxLength={15}
+                />
+              </View>
+
+              {/* Service Address */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Service Address</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={extractedData.serviceAddress}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, serviceAddress: text })}
+                  placeholder="Enter service address"
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  numberOfLines={3}
+                  maxLength={200}
+                  textAlignVertical="top"
                 />
               </View>
 
@@ -839,7 +950,7 @@ export default function PANScanScreen({ navigation }: Props) {
                     {isConfirmed && <Ionicons name="checkmark" size={16} color="#ffffff" />}
                   </View>
                   <Text style={styles.checkboxLabel}>
-                    I confirm the above PAN details are correct
+                    I confirm the above electricity bill details are correct
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -870,10 +981,16 @@ export default function PANScanScreen({ navigation }: Props) {
                   setShowForm(false);
                   setImageUri(null);
                   setExtractedData({
-                    fullName: '',
-                    panNumber: '',
-                    dateOfBirth: '',
-                    fatherName: '',
+                    consumerName: '',
+                    consumerNumber: '',
+                    meterNumber: '',
+                    discomName: '',
+                    billingPeriod: '',
+                    billDate: '',
+                    dueDate: '',
+                    unitsConsumed: '',
+                    billAmount: '',
+                    serviceAddress: '',
                   });
                   setIsConfirmed(false);
                   setIsManualEntry(false);
@@ -1030,6 +1147,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 4,
+  },
+  textArea: {
+    minHeight: 80,
+    paddingTop: 16,
   },
   checkboxContainer: {
     marginBottom: 24,

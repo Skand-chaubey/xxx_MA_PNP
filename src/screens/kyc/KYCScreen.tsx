@@ -298,7 +298,7 @@ export default function KYCScreen({ navigation }: Props) {
 
                 <TouchableOpacity
                   style={styles.documentButton}
-                  onPress={() => handleDocumentSelect('electricity_bill')}
+                  onPress={() => navigation.navigate('ElectricityBillScan')}
                   activeOpacity={0.7}
                 >
                   <LinearGradient
