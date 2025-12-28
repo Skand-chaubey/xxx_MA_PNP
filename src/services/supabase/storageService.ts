@@ -1,113 +1,72 @@
 import { supabase } from './client';
+import { File } from 'expo-file-system/next';
+
+const PROFILE_IMAGES_BUCKET = 'profile-images';
 
 class SupabaseStorageService {
   /**
-   * Upload file to Supabase Storage
+   * Upload profile image from React Native (Expo Image Picker URI)
+   * Stores in: profile-images/{userId}/profile_{timestamp}.jpg
    */
-  async uploadFile(
-    bucket: string,
-    path: string,
-    file: Blob | File,
-    options?: {
-      contentType?: string;
-      upsert?: boolean;
+  async uploadProfileImage(imageUri: string): Promise<string> {
+    // 1. Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      throw new Error('You must be logged in to upload a profile image.');
     }
-  ): Promise<{ path: string; url: string }> {
-    const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
-      contentType: options?.contentType,
-      upsert: options?.upsert || false,
-    });
 
-    if (error) throw error;
+    const userId = user.id;
 
-    // Get public URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(bucket).getPublicUrl(data.path);
+    if (__DEV__) {
+      console.log('📤 Uploading profile image for user:', userId);
+      console.log('📷 Image URI:', imageUri);
+    }
 
-    return {
-      path: data.path,
-      url: publicUrl,
-    };
-  }
+    // 2. Read image file using Expo File API (SDK 54+)
+    const file = new File(imageUri);
+    
+    // 3. Read as bytes (Uint8Array) - works reliably in Expo
+    const uint8Array = await file.bytes();
 
-  /**
-   * Upload KYC document
-   */
-  async uploadKYCDocument(
-    userId: string,
-    documentType: string,
-    file: Blob | File
-  ): Promise<string> {
-    const fileName = `${userId}/${documentType}_${Date.now()}.${this.getFileExtension(file)}`;
-    const path = `${userId}/${fileName}`;
+    if (__DEV__) {
+      console.log('📦 File size:', uint8Array.length, 'bytes');
+    }
 
-    const { url } = await this.uploadFile('kyc-documents', path, file, {
-      contentType: file.type,
-    });
+    // 4. Generate file path: {userId}/profile_{timestamp}.jpg
+    const fileName = `profile_${Date.now()}.jpg`;
+    const filePath = `${userId}/${fileName}`;
 
-    return url;
-  }
+    if (__DEV__) {
+      console.log('📁 Upload path:', filePath);
+    }
 
-  /**
-   * Upload electricity bill
-   */
-  async uploadElectricityBill(userId: string, file: Blob | File): Promise<string> {
-    const fileName = `${userId}/bill_${Date.now()}.${this.getFileExtension(file)}`;
-    const path = `${userId}/${fileName}`;
-
-    const { url } = await this.uploadFile('electricity-bills', path, file, {
-      contentType: file.type,
-    });
-
-    return url;
-  }
-
-  /**
-   * Upload profile image from React Native
-   * Accepts image URI from expo-image-picker
-   */
-  async uploadProfileImageFromUri(userId: string, imageUri: string): Promise<string> {
-    try {
-      // Fetch the image as blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-
-      // Generate unique filename
-      const fileName = `profile_${Date.now()}.${this.getFileExtension(blob)}`;
-      const path = `${userId}/${fileName}`;
-
-      // Upload to Supabase storage
-      const { url } = await this.uploadFile('profile-images', path, blob, {
-        contentType: blob.type || 'image/jpeg',
-        upsert: false, // Don't upsert, create new file each time
+    // 5. Upload to Supabase Storage
+    const { data, error: uploadError } = await supabase.storage
+      .from(PROFILE_IMAGES_BUCKET)
+      .upload(filePath, uint8Array, {
+        contentType: 'image/jpeg',
+        upsert: true,
       });
 
-      // Delete old profile image if exists (optional cleanup)
-      // This is handled by Supabase storage policies or manual cleanup
-
-      return url;
-    } catch (error: any) {
+    if (uploadError) {
       if (__DEV__) {
-        console.error('❌ Profile image upload error:', error);
+        console.error('❌ Upload failed:', uploadError.message);
       }
-      throw new Error(`Failed to upload profile image: ${error.message}`);
+      throw new Error('Upload failed, please try again.');
     }
-  }
 
-  /**
-   * Upload profile image (legacy method for web/Blob)
-   */
-  async uploadProfileImage(userId: string, file: Blob | File): Promise<string> {
-    const fileName = `${userId}/profile_${Date.now()}.${this.getFileExtension(file)}`;
-    const path = `${userId}/${fileName}`;
+    // 6. Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from(PROFILE_IMAGES_BUCKET)
+      .getPublicUrl(data.path);
 
-    const { url } = await this.uploadFile('profile-images', path, file, {
-      contentType: file.type,
-      upsert: false,
-    });
+    if (__DEV__) {
+      console.log('✅ Upload successful!');
+      console.log('🔗 Public URL:', publicUrl);
+    }
 
-    return url;
+    return publicUrl;
   }
 
   /**
@@ -115,7 +74,6 @@ class SupabaseStorageService {
    */
   async deleteFile(bucket: string, path: string): Promise<void> {
     const { error } = await supabase.storage.from(bucket).remove([path]);
-
     if (error) throw error;
   }
 
@@ -123,52 +81,8 @@ class SupabaseStorageService {
    * Get public URL for a file
    */
   getPublicUrl(bucket: string, path: string): string {
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(bucket).getPublicUrl(path);
-
+    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
     return publicUrl;
-  }
-
-  /**
-   * Get signed URL for private file (expires in 1 hour by default)
-   */
-  async getSignedUrl(
-    bucket: string,
-    path: string,
-    expiresIn: number = 3600
-  ): Promise<string> {
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
-
-    if (error) throw error;
-
-    return data.signedUrl;
-  }
-
-  /**
-   * List files in a bucket folder
-   */
-  async listFiles(bucket: string, folder?: string): Promise<string[]> {
-    const { data, error } = await supabase.storage.from(bucket).list(folder || '');
-
-    if (error) throw error;
-
-    return data?.map((file) => file.name) || [];
-  }
-
-  /**
-   * Get file extension from file
-   */
-  private getFileExtension(file: Blob | File): string {
-    if (file instanceof File) {
-      return file.name.split('.').pop() || 'jpg';
-    }
-    // For Blob, try to infer from type
-    const type = file.type;
-    if (type.includes('jpeg') || type.includes('jpg')) return 'jpg';
-    if (type.includes('png')) return 'png';
-    if (type.includes('pdf')) return 'pdf';
-    return 'jpg'; // default
   }
 }
 

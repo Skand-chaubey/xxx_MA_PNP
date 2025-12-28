@@ -128,20 +128,10 @@ export default function ProfileScreen({ navigation }: Props) {
   };
 
   const uploadProfileImage = async (imageUri: string) => {
-    if (!user?.id) return;
-
     setIsUploadingImage(true);
     try {
-      if (__DEV__) {
-        console.log('📤 Uploading profile image...');
-      }
-
-      // Upload image to Supabase storage
-      const imageUrl = await supabaseStorageService.uploadProfileImageFromUri(user.id, imageUri);
-
-      if (__DEV__) {
-        console.log('✅ Image uploaded:', imageUrl);
-      }
+      // Upload image to Supabase storage (handles auth internally)
+      const imageUrl = await supabaseStorageService.uploadProfileImage(imageUri);
 
       // Update user profile with new image URL
       const response = await supabaseAuthService.updateProfile({
@@ -149,7 +139,6 @@ export default function ProfileScreen({ navigation }: Props) {
       });
 
       if (response.success && response.data) {
-        // Update user in store
         setUser(response.data);
         Alert.alert('Success', 'Profile picture updated successfully!');
       } else {
@@ -157,9 +146,9 @@ export default function ProfileScreen({ navigation }: Props) {
       }
     } catch (error: any) {
       if (__DEV__) {
-        console.error('❌ Error uploading profile image:', error);
+        console.error('❌ Upload error:', error.message);
       }
-      Alert.alert('Error', error.message || 'Failed to upload profile picture. Please try again.');
+      Alert.alert('Upload Failed', error.message || 'Failed to upload profile picture. Please try again.');
     } finally {
       setIsUploadingImage(false);
     }

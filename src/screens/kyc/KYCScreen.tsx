@@ -182,229 +182,211 @@ export default function KYCScreen({ navigation }: Props) {
     );
   }
 
+  // Render document card component
+  const renderDocumentCard = (
+    docType: DocumentType,
+    title: string,
+    onPress: () => void,
+    isOptional?: boolean
+  ) => {
+    const config = documentConfig[docType];
+    const isScanned = documentsScanned.includes(docType);
+    
+    return (
+      <TouchableOpacity
+        style={[styles.documentCard, isOptional && styles.documentCardOptional]}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <View style={styles.documentCardInner}>
+          <View style={[styles.documentIconWrapper, { backgroundColor: config.color + '15' }]}>
+            <MaterialCommunityIcons
+              name={config.icon as any}
+              size={24}
+              color={config.color}
+            />
+          </View>
+          <View style={styles.documentCardContent}>
+            <Text style={styles.documentCardTitle}>{title}</Text>
+            <Text style={styles.documentCardSubtitle}>{config.description}</Text>
+          </View>
+          {isScanned ? (
+            <View style={styles.checkIconWrapper}>
+              <MaterialCommunityIcons name="check-circle" size={22} color="#10b981" />
+            </View>
+          ) : (
+            <View style={styles.arrowIconWrapper}>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
       <LinearGradient
         colors={['#10b981', '#059669']}
         style={styles.gradientHeader}
       >
         <View style={styles.header}>
-          <View>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>KYC Verification</Text>
             <Text style={styles.headerSubtitle}>Verify your identity to start trading</Text>
           </View>
-          <MaterialCommunityIcons name="shield-check" size={32} color="#ffffff" />
+          <View style={styles.shieldIconWrapper}>
+            <MaterialCommunityIcons name="shield-check" size={28} color="#ffffff" />
+          </View>
         </View>
       </LinearGradient>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <Text style={styles.description}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Info Banner */}
+        <View style={styles.infoBanner}>
+          <Ionicons name="information-circle" size={20} color="#6b7280" />
+          <Text style={styles.infoBannerText}>
             As per government regulations, we need to verify your identity before you can trade energy.
           </Text>
+        </View>
 
-          {status !== 'pending' && (
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + '20' }]}>
+        {/* Status Badge */}
+        {status !== 'pending' && (
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + '12', borderColor: getStatusColor() + '30' }]}>
+            <View style={[styles.statusIconWrapper, { backgroundColor: getStatusColor() + '20' }]}>
               <MaterialCommunityIcons
                 name={getStatusIcon() as any}
-                size={24}
+                size={20}
                 color={getStatusColor()}
               />
-              <View style={styles.statusBadgeContent}>
-                <Text style={[styles.statusText, { color: getStatusColor() }]}>
-                  {getStatusText()}
-                </Text>
-                <Text style={styles.statusSubtext}>
-                  {status === 'verified'
-                    ? 'Your identity has been verified'
-                    : status === 'rejected'
-                    ? 'Please resubmit your documents'
-                    : 'Your verification is being processed'}
-                </Text>
-              </View>
             </View>
-          )}
+            <View style={styles.statusBadgeContent}>
+              <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                {getStatusText()}
+              </Text>
+              <Text style={styles.statusSubtext}>
+                {status === 'verified'
+                  ? 'Your identity has been verified'
+                  : status === 'rejected'
+                  ? 'Please resubmit your documents'
+                  : 'Your verification is being processed'}
+              </Text>
+            </View>
+          </View>
+        )}
 
-          {!isVerified() && (
-            <>
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Identity Documents</Text>
+        {!isVerified() && (
+          <>
+            {/* Section 1: Identity Documents */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleWrapper}>
+                  <View style={styles.sectionBadge}>
+                    <Text style={styles.sectionBadgeText}>Required</Text>
+                  </View>
+                  <Text style={styles.sectionTitle}>Identity Documents</Text>
+                </View>
                 <Text style={styles.sectionSubtitle}>
                   Upload a government-issued ID to verify your identity
                 </Text>
-
-                <TouchableOpacity
-                  style={styles.documentButton}
-                  onPress={() => navigation.navigate('AadhaarScan')}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[documentConfig.aadhaar.color + '20', documentConfig.aadhaar.color + '10']}
-                    style={styles.documentButtonGradient}
-                  >
-                    <View style={[styles.documentIconContainer, { backgroundColor: documentConfig.aadhaar.color + '20' }]}>
-                      <MaterialCommunityIcons
-                        name={documentConfig.aadhaar.icon as any}
-                        size={28}
-                        color={documentConfig.aadhaar.color}
-                      />
-                    </View>
-                    <View style={styles.documentButtonContent}>
-                      <Text style={styles.documentButtonText}>Scan Aadhaar Card</Text>
-                      <Text style={styles.documentButtonSubtext}>
-                        {documentConfig.aadhaar.description}
-                      </Text>
-                    </View>
-                    {documentsScanned.includes('aadhaar') && (
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#10b981" />
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.documentButton}
-                  onPress={() => navigation.navigate('PANScan')}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[documentConfig.pan.color + '20', documentConfig.pan.color + '10']}
-                    style={styles.documentButtonGradient}
-                  >
-                    <View style={[styles.documentIconContainer, { backgroundColor: documentConfig.pan.color + '20' }]}>
-                      <MaterialCommunityIcons
-                        name={documentConfig.pan.icon as any}
-                        size={28}
-                        color={documentConfig.pan.color}
-                      />
-                    </View>
-                    <View style={styles.documentButtonContent}>
-                      <Text style={styles.documentButtonText}>Scan PAN Card</Text>
-                      <Text style={styles.documentButtonSubtext}>
-                        {documentConfig.pan.description}
-                      </Text>
-                    </View>
-                    {documentsScanned.includes('pan') && (
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#10b981" />
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Additional Documents</Text>
+              <View style={styles.cardsContainer}>
+                {renderDocumentCard(
+                  'aadhaar',
+                  'Scan Aadhaar Card',
+                  () => navigation.navigate('AadhaarScan')
+                )}
+                {renderDocumentCard(
+                  'pan',
+                  'Scan PAN Card',
+                  () => navigation.navigate('PANScan')
+                )}
+              </View>
+            </View>
+
+            {/* Section 2: Additional Documents */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleWrapper}>
+                  <View style={styles.sectionBadge}>
+                    <Text style={styles.sectionBadgeText}>Required</Text>
+                  </View>
+                  <Text style={styles.sectionTitle}>Additional Documents</Text>
+                </View>
                 <Text style={styles.sectionSubtitle}>
-                  Upload your electricity bill for meter verification
+                  Required for meter verification
                 </Text>
-
-                <TouchableOpacity
-                  style={styles.documentButton}
-                  onPress={() => navigation.navigate('ElectricityBillScan')}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[documentConfig.electricity_bill.color + '20', documentConfig.electricity_bill.color + '10']}
-                    style={styles.documentButtonGradient}
-                  >
-                    <View style={[styles.documentIconContainer, { backgroundColor: documentConfig.electricity_bill.color + '20' }]}>
-                      <MaterialCommunityIcons
-                        name={documentConfig.electricity_bill.icon as any}
-                        size={28}
-                        color={documentConfig.electricity_bill.color}
-                      />
-                    </View>
-                    <View style={styles.documentButtonContent}>
-                      <Text style={styles.documentButtonText}>Scan Electricity Bill</Text>
-                      <Text style={styles.documentButtonSubtext}>
-                        {documentConfig.electricity_bill.description}
-                      </Text>
-                    </View>
-                    {documentsScanned.includes('electricity_bill') && (
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#10b981" />
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Business Documents (Optional)</Text>
+              <View style={styles.cardsContainer}>
+                {renderDocumentCard(
+                  'electricity_bill',
+                  'Scan Electricity Bill',
+                  () => navigation.navigate('ElectricityBillScan')
+                )}
+              </View>
+            </View>
+
+            {/* Section 3: Business Documents (Optional) */}
+            <View style={[styles.section, styles.sectionOptional]}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleWrapper}>
+                  <View style={[styles.sectionBadge, styles.sectionBadgeOptional]}>
+                    <Text style={[styles.sectionBadgeText, styles.sectionBadgeTextOptional]}>Optional</Text>
+                  </View>
+                  <Text style={[styles.sectionTitle, styles.sectionTitleOptional]}>Business Documents</Text>
+                </View>
                 <Text style={styles.sectionSubtitle}>
                   For societies and commercial users
                 </Text>
-
-                <TouchableOpacity
-                  style={styles.documentButton}
-                  onPress={() => handleDocumentSelect('gst')}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[documentConfig.gst.color + '20', documentConfig.gst.color + '10']}
-                    style={styles.documentButtonGradient}
-                  >
-                    <View style={[styles.documentIconContainer, { backgroundColor: documentConfig.gst.color + '20' }]}>
-                      <MaterialCommunityIcons
-                        name={documentConfig.gst.icon as any}
-                        size={28}
-                        color={documentConfig.gst.color}
-                      />
-                    </View>
-                    <View style={styles.documentButtonContent}>
-                      <Text style={styles.documentButtonText}>Upload GST Certificate</Text>
-                      <Text style={styles.documentButtonSubtext}>
-                        {documentConfig.gst.description}
-                      </Text>
-                    </View>
-                    {documentsScanned.includes('gst') && (
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#10b981" />
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.documentButton}
-                  onPress={() => handleDocumentSelect('society_registration')}
-                  activeOpacity={0.7}
-                >
-                  <LinearGradient
-                    colors={[documentConfig.society_registration.color + '20', documentConfig.society_registration.color + '10']}
-                    style={styles.documentButtonGradient}
-                  >
-                    <View style={[styles.documentIconContainer, { backgroundColor: documentConfig.society_registration.color + '20' }]}>
-                      <MaterialCommunityIcons
-                        name={documentConfig.society_registration.icon as any}
-                        size={28}
-                        color={documentConfig.society_registration.color}
-                      />
-                    </View>
-                    <View style={styles.documentButtonContent}>
-                      <Text style={styles.documentButtonText}>Upload Society Registration</Text>
-                      <Text style={styles.documentButtonSubtext}>
-                        {documentConfig.society_registration.description}
-                      </Text>
-                    </View>
-                    {documentsScanned.includes('society_registration') && (
-                      <MaterialCommunityIcons name="check-circle" size={24} color="#10b981" />
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
               </View>
-            </>
-          )}
 
-          {isVerified() && (
-            <View style={styles.verifiedContainer}>
-              <LinearGradient
-                colors={['#ecfdf5', '#d1fae5']}
-                style={styles.verifiedGradient}
-              >
-                <MaterialCommunityIcons name="check-circle" size={64} color="#10b981" />
-                <Text style={styles.verifiedText}>✓ Your identity has been verified</Text>
-                <Text style={styles.verifiedSubtext}>
-                  You can now participate in energy trading
-                </Text>
-              </LinearGradient>
+              <View style={styles.cardsContainer}>
+                {renderDocumentCard(
+                  'gst',
+                  'Upload GST Certificate',
+                  () => navigation.navigate('GSTScan'),
+                  true
+                )}
+                {renderDocumentCard(
+                  'society_registration',
+                  'Upload Society Registration',
+                  () => navigation.navigate('SocietyRegistrationScan'),
+                  true
+                )}
+              </View>
             </View>
-          )}
-        </View>
+          </>
+        )}
+
+        {/* Verified State */}
+        {isVerified() && (
+          <View style={styles.verifiedContainer}>
+            <View style={styles.verifiedIconWrapper}>
+              <MaterialCommunityIcons name="check-circle" size={56} color="#10b981" />
+            </View>
+            <Text style={styles.verifiedTitle}>Identity Verified</Text>
+            <Text style={styles.verifiedSubtitle}>
+              Your identity has been successfully verified. You can now participate in energy trading.
+            </Text>
+          </View>
+        )}
+
+        {/* Bottom Spacing */}
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -413,137 +395,233 @@ export default function KYCScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#f8fafc',
   },
   gradientHeader: {
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 12,
+    paddingBottom: 20,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  headerContent: {
+    flex: 1,
+  },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#ffffff',
-    marginBottom: 4,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#d1fae5',
-    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 2,
+  },
+  shieldIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
   },
-  content: {
-    padding: 20,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
-  description: {
-    fontSize: 14,
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#ffffff',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 10,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 13,
     color: '#6b7280',
-    lineHeight: 20,
-    marginBottom: 24,
+    lineHeight: 18,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 24,
+    borderWidth: 1,
     gap: 12,
+  },
+  statusIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statusBadgeContent: {
     flex: 1,
   },
   statusText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
   },
   statusSubtext: {
     fontSize: 12,
     color: '#6b7280',
+    marginTop: 2,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 28,
+  },
+  sectionOptional: {
+    opacity: 0.9,
+  },
+  sectionHeader: {
+    marginBottom: 14,
+  },
+  sectionTitleWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 8,
+  },
+  sectionBadge: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  sectionBadgeOptional: {
+    backgroundColor: '#f3f4f6',
+  },
+  sectionBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#16a34a',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sectionBadgeTextOptional: {
+    color: '#6b7280',
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: '#111827',
-    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  sectionTitleOptional: {
+    color: '#374151',
   },
   sectionSubtitle: {
     fontSize: 13,
     color: '#6b7280',
-    marginBottom: 16,
+    lineHeight: 18,
   },
-  documentButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 12,
+  cardsContainer: {
+    gap: 10,
+  },
+  documentCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  documentButtonGradient: {
+  documentCardOptional: {
+    borderColor: '#f3f4f6',
+  },
+  documentCardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     gap: 12,
   },
-  documentIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  documentIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  documentButtonContent: {
+  documentCardContent: {
     flex: 1,
   },
-  documentButtonText: {
-    fontSize: 16,
+  documentCardTitle: {
+    fontSize: 15,
     fontWeight: '600',
     color: '#111827',
     marginBottom: 2,
   },
-  documentButtonSubtext: {
+  documentCardSubtitle: {
     fontSize: 12,
     color: '#6b7280',
   },
-  verifiedContainer: {
-    marginTop: 24,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  verifiedGradient: {
-    padding: 32,
+  checkIconWrapper: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  verifiedText: {
+  arrowIconWrapper: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedContainer: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  verifiedIconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#dcfce7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  verifiedTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#10b981',
-    marginTop: 16,
+    fontWeight: '700',
+    color: '#166534',
     marginBottom: 8,
   },
-  verifiedSubtext: {
+  verifiedSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#16a34a',
     textAlign: 'center',
+    lineHeight: 20,
+  },
+  bottomSpacer: {
+    height: 32,
   },
 });

@@ -1,4 +1,4 @@
-// User Types
+// User Types - Navigation and KYC types for PowerNetPro
 export interface User {
   id: string;
   email: string; // Primary identifier for authentication
@@ -151,6 +151,8 @@ export type RootStackParamList = {
   AadhaarScan: undefined;
   PANScan: undefined;
   ElectricityBillScan: undefined;
+  GSTScan: undefined;
+  SocietyRegistrationScan: undefined;
   MeterRegistration: { isHardwareRequest?: boolean } | undefined;
   MeterStatus: undefined;
   Home: undefined;

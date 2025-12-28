@@ -496,52 +496,227 @@ export default function AadhaarScanScreen({ navigation }: Props) {
     
     // CRITICAL: If not found, leave empty - DO NOT reuse old values
 
-    // STEP 5: ADDRESS DETECTION (STRICT - NO GUESSING)
-    // Detect address ONLY if OCR text contains:
-    // - Street/locality text AND
-    // - City/state keyword AND
-    // - Pincode (6 digits)
-    // If any missing: Leave Address EMPTY
+    // STEP 5: ADDRESS DETECTION (IMPROVED - MORE FLEXIBLE)
+    // Aadhaar address is typically on the BACK side but sometimes on front too
+    // Look for address indicators and pincode
+    
+    // Indian address keywords - comprehensive list
+    const addressKeywords = [
+      // Street/Road indicators
+      'street', 'road', 'lane', 'gali', 'marg', 'path', 'chowk', 'circle',
+      // Area/Locality indicators
+      'nagar', 'colony', 'village', 'mohalla', 'sector', 'block', 'ward', 'area', 'locality', 'vihar', 'enclave', 'park', 'garden', 'bagh', 'puram', 'pur', 'puri', 'garh', 'ganj', 'gunj', 'pet', 'peta', 'wadi', 'wada', 'gaon', 'khurd', 'kalan', 'khas',
+      // Building indicators
+      'house', 'flat', 'apartment', 'floor', 'building', 'tower', 'complex', 'society', 'plot', 'shop', 'office',
+      // Administrative divisions
+      'tehsil', 'taluka', 'mandal', 'district', 'dist', 'state', 'post', 'p.o', 'p.o.', 'ps', 'p.s', 'thana',
+      // Common address prefixes
+      's/o', 'c/o', 'd/o', 'w/o', 'h/no', 'h.no', 'house no', 'vill', 'tq', 'tal',
+    ];
+    
+    // All Indian states and union territories
+    const indianStates = [
+      'andhra pradesh', 'arunachal pradesh', 'assam', 'bihar', 'chhattisgarh', 'goa', 'gujarat', 'haryana', 'himachal pradesh', 'jharkhand', 'karnataka', 'kerala', 'madhya pradesh', 'maharashtra', 'manipur', 'meghalaya', 'mizoram', 'nagaland', 'odisha', 'punjab', 'rajasthan', 'sikkim', 'tamil nadu', 'telangana', 'tripura', 'uttar pradesh', 'uttarakhand', 'west bengal',
+      'delhi', 'chandigarh', 'puducherry', 'ladakh', 'jammu', 'kashmir', 'andaman', 'nicobar', 'lakshadweep', 'dadra', 'nagar haveli', 'daman', 'diu',
+      // Abbreviations
+      'ap', 'ar', 'as', 'br', 'cg', 'ga', 'gj', 'hr', 'hp', 'jh', 'ka', 'kl', 'mp', 'mh', 'mn', 'ml', 'mz', 'nl', 'od', 'pb', 'rj', 'sk', 'tn', 'ts', 'tr', 'up', 'uk', 'wb', 'dl', 'ch', 'py', 'jk', 'an', 'ld', 'dn', 'dd',
+    ];
+    
+    // Major Indian cities (top 100+)
+    const indianCities = [
+      'mumbai', 'delhi', 'bangalore', 'bengaluru', 'hyderabad', 'ahmedabad', 'chennai', 'kolkata', 'surat', 'pune', 'jaipur', 'lucknow', 'kanpur', 'nagpur', 'indore', 'thane', 'bhopal', 'visakhapatnam', 'vizag', 'patna', 'vadodara', 'ghaziabad', 'ludhiana', 'agra', 'nashik', 'faridabad', 'meerut', 'rajkot', 'varanasi', 'srinagar', 'aurangabad', 'dhanbad', 'amritsar', 'allahabad', 'prayagraj', 'ranchi', 'howrah', 'coimbatore', 'jabalpur', 'gwalior', 'vijayawada', 'jodhpur', 'madurai', 'raipur', 'kota', 'chandigarh', 'guwahati', 'solapur', 'hubli', 'mysore', 'mysuru', 'tiruchirappalli', 'trichy', 'bareilly', 'aligarh', 'tiruppur', 'moradabad', 'jalandhar', 'bhubaneswar', 'salem', 'warangal', 'guntur', 'bhiwandi', 'saharanpur', 'gorakhpur', 'bikaner', 'amravati', 'noida', 'jamshedpur', 'bhilai', 'cuttack', 'firozabad', 'kochi', 'cochin', 'nellore', 'bhavnagar', 'dehradun', 'durgapur', 'asansol', 'rourkela', 'nanded', 'kolhapur', 'ajmer', 'akola', 'gulbarga', 'jamnagar', 'ujjain', 'loni', 'siliguri', 'jhansi', 'ulhasnagar', 'jammu', 'sangli', 'mangalore', 'erode', 'belgaum', 'ambattur', 'tirunelveli', 'malegaon', 'gaya', 'udaipur', 'maheshtala', 'davanagere', 'kozhikode', 'calicut', 'thiruvananthapuram', 'trivandrum',
+    ];
+    
+    // Helper function to check if text contains address indicators
+    const hasAddressIndicator = (text: string): boolean => {
+      const lowerText = text.toLowerCase();
+      // Check for address keywords
+      const hasKeyword = addressKeywords.some(keyword => lowerText.includes(keyword));
+      // Check for state names
+      const hasState = indianStates.some(state => lowerText.includes(state));
+      // Check for city names
+      const hasCity = indianCities.some(city => lowerText.includes(city));
+      // Check for pincode
+      const hasPincode = /\b\d{6}\b/.test(text);
+      
+      // Need at least 2 of these indicators
+      const indicatorCount = [hasKeyword, hasState, hasCity, hasPincode].filter(Boolean).length;
+      return indicatorCount >= 2;
+    };
+    
+    // Helper function to clean address text
+    const cleanAddress = (addr: string): string => {
+      let cleaned = addr.trim();
+      // Remove government/ID text
+      cleaned = cleaned.replace(/(?:GOVERNMENT OF INDIA|भारत सरकार|GOVERNMENT|OF INDIA|VID|Aadhaar|UIDAI|Unique Identification)/gi, '').trim();
+      // Remove multiple spaces
+      cleaned = cleaned.replace(/\s+/g, ' ');
+      // Remove leading/trailing punctuation
+      cleaned = cleaned.replace(/^[,\s:]+|[,\s:]+$/g, '');
+      return cleaned;
+    };
     
     // Pattern 1: Explicit "Address" label with multi-line content
-    const addressWithLabel = ocrText.match(/(?:Address|पता|ADDRESS|Address Line)[\s:]+([^\n]+(?:\n[^\n]+){1,4}?)(?:\n\n|\n[A-Z\u0900-\u097F]{2,}|$)/i);
-    if (addressWithLabel && addressWithLabel[1]) {
-      let address = addressWithLabel[1].trim().replace(/\s+/g, ' ');
-      // Remove excluded text
-      address = address.replace(/(?:GOVERNMENT OF INDIA|भारत सरकार|GOVERNMENT|OF INDIA|VID|Aadhaar)/gi, '').trim();
-      
-      // STRICT VALIDATION: Must have street + city/state + pincode
-      const hasStreet = /(?:Street|Road|Lane|Nagar|Colony|Village|Area|Locality|ST|ROAD|LANE)/i.test(address);
-      const hasCityState = /(?:Delhi|Mumbai|Bangalore|Chennai|Kolkata|Pune|Hyderabad|State|District|CITY)/i.test(address);
-      const hasPincode = /\b\d{6}\b/.test(address);
-      
-      // All three required for valid address
-      if (address.length >= 20 && hasStreet && hasCityState && hasPincode && 
-          /[A-Za-z\u0900-\u097F]/.test(address) && !/^\d+$/.test(address)) {
-        data.address = address;
-      }
-    }
+    const addressLabelPatterns = [
+      /(?:Address|पता|ADDRESS|Address Line)[\s:]+([^\n]+(?:\n[^\n]+){0,5})/i,
+      /(?:Address|पता)[\s:]*\n([^\n]+(?:\n[^\n]+){0,5})/i,
+    ];
     
-    // Pattern 2: S/O or C/O pattern (only if Pattern 1 didn't find)
-    if (!data.address) {
-      const sOCoPattern = ocrText.match(/(?:S\/O|S\/O:|C\/O|C\/O:)\s+([^\n]+(?:\n[^\n]+){1,4}?)(?:\n[A-Z\u0900-\u097F]{2,}|$)/i);
-      if (sOCoPattern && sOCoPattern[1]) {
-        let address = sOCoPattern[1].trim().replace(/\s+/g, ' ');
-        address = address.replace(/(?:GOVERNMENT OF INDIA|भारत सरकार|GOVERNMENT|OF INDIA|VID|Aadhaar)/gi, '').trim();
+    for (const pattern of addressLabelPatterns) {
+      if (data.address) break;
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        let address = cleanAddress(match[1]);
         
-        // Same strict validation
-        const hasStreet = /(?:Street|Road|Lane|Nagar|Colony|Village|Area|Locality)/i.test(address);
-        const hasCityState = /(?:Delhi|Mumbai|Bangalore|Chennai|Kolkata|Pune|Hyderabad|State|District)/i.test(address);
-        const hasPincode = /\b\d{6}\b/.test(address);
+        // Continue extracting until we hit a non-address line or max 5 lines
+        const startIdx = ocrText.indexOf(match[1]);
+        if (startIdx !== -1) {
+          const remainingText = ocrText.slice(startIdx);
+          const addressLines: string[] = [];
+          const textLines = remainingText.split('\n');
+          
+          for (let i = 0; i < Math.min(textLines.length, 6); i++) {
+            const line = textLines[i].trim();
+            if (!line) continue;
+            // Stop if we hit Aadhaar number or name patterns
+            if (/^\d{4}\s*\d{4}\s*\d{4}$/.test(line)) break;
+            if (/^(Male|Female|M|F|DOB|Date of Birth|जन्म)$/i.test(line)) break;
+            addressLines.push(line);
+          }
+          
+          address = cleanAddress(addressLines.join(' '));
+        }
         
-        if (address.length >= 20 && hasStreet && hasCityState && hasPincode && 
-            /[A-Za-z\u0900-\u097F]/.test(address) && !/^\d+$/.test(address)) {
+        // Validate address - at least 15 chars, has some address indicators
+        if (address.length >= 15 && hasAddressIndicator(address)) {
           data.address = address;
+          if (__DEV__) {
+            console.log('✅ Address found via Pattern 1 (Address label):', address);
+          }
         }
       }
     }
     
-    // CRITICAL: If not clearly detected with all requirements, leave empty
+    // Pattern 2: S/O, C/O, D/O, W/O pattern (common in Indian addresses)
+    if (!data.address) {
+      const relationPatterns = [
+        /(?:S\/O|C\/O|D\/O|W\/O|s\/o|c\/o|d\/o|w\/o)[\s:,]+([^\n]+(?:\n[^\n]+){0,5})/i,
+      ];
+      
+      for (const pattern of relationPatterns) {
+        const match = ocrText.match(pattern);
+        if (match && match[1]) {
+          // Get the full address block after S/O etc
+          const startIdx = ocrText.indexOf(match[0]);
+          if (startIdx !== -1) {
+            const remainingText = ocrText.slice(startIdx);
+            const addressLines: string[] = [];
+            const textLines = remainingText.split('\n');
+            
+            for (let i = 0; i < Math.min(textLines.length, 6); i++) {
+              const line = textLines[i].trim();
+              if (!line) continue;
+              // Stop if we hit Aadhaar number
+              if (/^\d{4}\s*\d{4}\s*\d{4}$/.test(line)) break;
+              if (/^(DOB|Date of Birth|जन्म|Gender)$/i.test(line)) break;
+              addressLines.push(line);
+            }
+            
+            let address = cleanAddress(addressLines.join(' '));
+            
+            // Validate
+            if (address.length >= 15 && hasAddressIndicator(address)) {
+              data.address = address;
+              if (__DEV__) {
+                console.log('✅ Address found via Pattern 2 (S/O pattern):', address);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+    
+    // Pattern 3: Look for pincode and extract surrounding text
+    if (!data.address) {
+      const pincodeMatch = ocrText.match(/\b(\d{6})\b/);
+      if (pincodeMatch) {
+        const pincodeIdx = ocrText.indexOf(pincodeMatch[0]);
+        if (pincodeIdx !== -1) {
+          // Get text before and after pincode (likely address)
+          const beforePincode = ocrText.slice(Math.max(0, pincodeIdx - 200), pincodeIdx);
+          const afterPincode = ocrText.slice(pincodeIdx, Math.min(ocrText.length, pincodeIdx + 50));
+          
+          // Find last meaningful break before pincode (name/DOB line)
+          const beforeLines = beforePincode.split('\n').reverse();
+          const addressLines: string[] = [];
+          
+          for (const line of beforeLines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            // Stop if we hit likely non-address content
+            if (/^\d{2}[-\/]\d{2}[-\/]\d{4}$/.test(trimmed)) break; // DOB
+            if (/^(Male|Female|M|F|DOB|जन्म|Gender)$/i.test(trimmed)) break;
+            if (/^[A-Z\u0900-\u097F]{2,}(?:\s+[A-Z\u0900-\u097F]{2,}){1,3}$/.test(trimmed) && !hasAddressIndicator(trimmed)) break; // Name
+            addressLines.unshift(trimmed);
+            if (addressLines.length >= 5) break;
+          }
+          
+          // Add pincode and any text after it
+          const afterLines = afterPincode.split('\n');
+          for (const line of afterLines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (/^\d{4}\s*\d{4}\s*\d{4}$/.test(trimmed)) break; // Aadhaar number
+            addressLines.push(trimmed);
+            if (addressLines.length >= 6) break;
+          }
+          
+          let address = cleanAddress(addressLines.join(' '));
+          
+          if (address.length >= 15 && hasAddressIndicator(address)) {
+            data.address = address;
+            if (__DEV__) {
+              console.log('✅ Address found via Pattern 3 (Pincode-based):', address);
+            }
+          }
+        }
+      }
+    }
+    
+    // Pattern 4: Look for house number pattern (H.No, House No, etc)
+    if (!data.address) {
+      const houseNoMatch = ocrText.match(/(?:H\.?No\.?|House\s*No\.?|Flat\s*No\.?|Plot\s*No\.?)[\s:,]*([^\n]+(?:\n[^\n]+){0,5})/i);
+      if (houseNoMatch && houseNoMatch[1]) {
+        const startIdx = ocrText.indexOf(houseNoMatch[0]);
+        if (startIdx !== -1) {
+          const remainingText = ocrText.slice(startIdx);
+          const addressLines: string[] = [];
+          const textLines = remainingText.split('\n');
+          
+          for (let i = 0; i < Math.min(textLines.length, 6); i++) {
+            const line = textLines[i].trim();
+            if (!line) continue;
+            if (/^\d{4}\s*\d{4}\s*\d{4}$/.test(line)) break;
+            addressLines.push(line);
+          }
+          
+          let address = cleanAddress(addressLines.join(' '));
+          
+          if (address.length >= 15) {
+            data.address = address;
+            if (__DEV__) {
+              console.log('✅ Address found via Pattern 4 (House No):', address);
+            }
+          }
+        }
+      }
+    }
+    
+    // Log if address not found
+    if (!data.address && __DEV__) {
+      console.warn('⚠️ Address not detected. May be on back side of Aadhaar. OCR text sample:', ocrText.slice(0, 500));
+    }
 
     return data;
   };

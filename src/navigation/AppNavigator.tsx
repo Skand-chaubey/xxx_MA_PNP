@@ -23,6 +23,8 @@ import KYCScreen from '@/screens/kyc/KYCScreen';
 import AadhaarScanScreen from '@/screens/kyc/AadhaarScanScreen';
 import PANScanScreen from '@/screens/kyc/PANScanScreen';
 import ElectricityBillScanScreen from '@/screens/kyc/ElectricityBillScanScreen';
+import GSTScanScreen from '@/screens/kyc/GSTScanScreen';
+import SocietyRegistrationScanScreen from '@/screens/kyc/SocietyRegistrationScanScreen';
 import MeterRegistrationScreen from '@/screens/meter/MeterRegistrationScreen';
 
 // Trading Screens
@@ -163,6 +165,16 @@ export const AppNavigator = () => {
             <RootStack.Screen
               name="ElectricityBillScan"
               component={ElectricityBillScanScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <RootStack.Screen
+              name="GSTScan"
+              component={GSTScanScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <RootStack.Screen
+              name="SocietyRegistrationScan"
+              component={SocietyRegistrationScanScreen}
               options={{ presentation: 'modal' }}
             />
             <RootStack.Screen

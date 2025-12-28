@@ -1,0 +1,1166 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Image,
+  ActivityIndicator,
+  TextInput,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '@/types';
+import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
+import { useKYCStore } from '@/store';
+import * as FileSystem from 'expo-file-system/legacy';
+
+type GSTScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'GSTScan'>;
+
+interface Props {
+  navigation: GSTScanScreenNavigationProp;
+}
+
+interface ExtractedGSTData {
+  gstin: string;
+  legalName: string;
+  tradeName: string;
+  constitutionOfBusiness: string;
+  dateOfRegistration: string;
+  businessAddress: string;
+  stateJurisdiction: string;
+}
+
+export default function GSTScanScreen({ navigation }: Props) {
+  const { setKYCData } = useKYCStore();
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [extractedData, setExtractedData] = useState<ExtractedGSTData>({
+    gstin: '',
+    legalName: '',
+    tradeName: '',
+    constitutionOfBusiness: '',
+    dateOfRegistration: '',
+    businessAddress: '',
+    stateJurisdiction: '',
+  });
+  const [showForm, setShowForm] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isManualEntry, setIsManualEntry] = useState(false);
+  const [isExpoGo, setIsExpoGo] = useState(false);
+
+  // Check if running in Expo Go on mount
+  useEffect(() => {
+    const checkExpoGo = ocrService.isRunningInExpoGo();
+    setIsExpoGo(checkExpoGo);
+    if (checkExpoGo && __DEV__) {
+      console.log('📱 Running in Expo Go - OCR disabled');
+    }
+  }, []);
+
+  /**
+   * Format date with slashes: DD/MM/YYYY
+   */
+  const formatDate = (text: string): string => {
+    const digitsOnly = text.replace(/\D/g, '');
+    const limited = digitsOnly.slice(0, 8);
+    
+    if (limited.length <= 2) {
+      return limited;
+    } else if (limited.length <= 4) {
+      return `${limited.slice(0, 2)}/${limited.slice(2)}`;
+    } else {
+      return `${limited.slice(0, 2)}/${limited.slice(2, 4)}/${limited.slice(4)}`;
+    }
+  };
+
+  /**
+   * Format GSTIN: uppercase, alphanumeric only, 15 characters
+   */
+  const formatGSTIN = (text: string): string => {
+    return text.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 15);
+  };
+
+  /**
+   * GSTIN Regex Pattern
+   * Format: 2 digits (state code) + 10 char PAN + 1 digit (entity) + Z + 1 alphanumeric (checksum)
+   */
+  const GSTIN_REGEX = /[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}/gi;
+
+  /**
+   * Indian States mapping for state code
+   */
+  const STATE_CODES: Record<string, string> = {
+    '01': 'Jammu & Kashmir',
+    '02': 'Himachal Pradesh',
+    '03': 'Punjab',
+    '04': 'Chandigarh',
+    '05': 'Uttarakhand',
+    '06': 'Haryana',
+    '07': 'Delhi',
+    '08': 'Rajasthan',
+    '09': 'Uttar Pradesh',
+    '10': 'Bihar',
+    '11': 'Sikkim',
+    '12': 'Arunachal Pradesh',
+    '13': 'Nagaland',
+    '14': 'Manipur',
+    '15': 'Mizoram',
+    '16': 'Tripura',
+    '17': 'Meghalaya',
+    '18': 'Assam',
+    '19': 'West Bengal',
+    '20': 'Jharkhand',
+    '21': 'Odisha',
+    '22': 'Chhattisgarh',
+    '23': 'Madhya Pradesh',
+    '24': 'Gujarat',
+    '25': 'Daman & Diu',
+    '26': 'Dadra & Nagar Haveli',
+    '27': 'Maharashtra',
+    '29': 'Karnataka',
+    '30': 'Goa',
+    '31': 'Lakshadweep',
+    '32': 'Kerala',
+    '33': 'Tamil Nadu',
+    '34': 'Puducherry',
+    '35': 'Andaman & Nicobar Islands',
+    '36': 'Telangana',
+    '37': 'Andhra Pradesh',
+    '38': 'Ladakh',
+  };
+
+  /**
+   * Extract GST data from OCR text
+   */
+  const extractGSTData = (ocrText: string): ExtractedGSTData => {
+    const data: ExtractedGSTData = {
+      gstin: '',
+      legalName: '',
+      tradeName: '',
+      constitutionOfBusiness: '',
+      dateOfRegistration: '',
+      businessAddress: '',
+      stateJurisdiction: '',
+    };
+
+    const lines = ocrText.split('\n');
+    const upperText = ocrText.toUpperCase();
+
+    // ============================================
+    // A. GSTIN - STRICT DETECTION
+    // ============================================
+    const gstinMatches = ocrText.match(GSTIN_REGEX);
+    if (gstinMatches && gstinMatches.length > 0) {
+      data.gstin = gstinMatches[0].toUpperCase();
+      
+      // Extract state from GSTIN
+      const stateCode = data.gstin.substring(0, 2);
+      if (STATE_CODES[stateCode]) {
+        data.stateJurisdiction = STATE_CODES[stateCode];
+      }
+      
+      if (__DEV__) {
+        console.log('✅ GSTIN detected:', data.gstin);
+      }
+    }
+
+    // ============================================
+    // B. LEGAL NAME OF BUSINESS
+    // ============================================
+    const legalNamePatterns = [
+      /Legal Name(?:\s*of\s*Business)?[:\s]+([A-Za-z0-9\s&.,'-]+?)(?:\n|Trade|$)/i,
+      /(?:Registered Name|Business Name)[:\s]+([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+    ];
+
+    for (const pattern of legalNamePatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        if (name.length >= 3 && name.length <= 150) {
+          data.legalName = name.toUpperCase();
+          if (__DEV__) {
+            console.log('✅ Legal Name detected:', data.legalName);
+          }
+          break;
+        }
+      }
+    }
+
+    // ============================================
+    // C. TRADE NAME
+    // ============================================
+    const tradeNamePatterns = [
+      /Trade Name[:\s]+([A-Za-z0-9\s&.,'-]+?)(?:\n|Constitution|$)/i,
+      /(?:Trading As|DBA)[:\s]+([A-Za-z0-9\s&.,'-]+?)(?:\n|$)/i,
+    ];
+
+    for (const pattern of tradeNamePatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        if (name.length >= 2 && name.length <= 150) {
+          data.tradeName = name.toUpperCase();
+          if (__DEV__) {
+            console.log('✅ Trade Name detected:', data.tradeName);
+          }
+          break;
+        }
+      }
+    }
+
+    // ============================================
+    // D. CONSTITUTION OF BUSINESS
+    // ============================================
+    const constitutionTypes = [
+      'PROPRIETORSHIP',
+      'PARTNERSHIP',
+      'PRIVATE LIMITED',
+      'PVT LTD',
+      'LIMITED LIABILITY PARTNERSHIP',
+      'LLP',
+      'PUBLIC LIMITED',
+      'HINDU UNDIVIDED FAMILY',
+      'HUF',
+      'TRUST',
+      'SOCIETY',
+      'COOPERATIVE',
+      'GOVERNMENT',
+      'LOCAL AUTHORITY',
+    ];
+
+    const constitutionPattern = /Constitution(?:\s*of\s*Business)?[:\s]+([A-Za-z\s]+?)(?:\n|Date|$)/i;
+    const constitutionMatch = ocrText.match(constitutionPattern);
+    if (constitutionMatch && constitutionMatch[1]) {
+      data.constitutionOfBusiness = constitutionMatch[1].trim().toUpperCase();
+    } else {
+      // Fallback: Search for known constitution types
+      for (const type of constitutionTypes) {
+        if (upperText.includes(type)) {
+          data.constitutionOfBusiness = type;
+          break;
+        }
+      }
+    }
+
+    if (__DEV__ && data.constitutionOfBusiness) {
+      console.log('✅ Constitution detected:', data.constitutionOfBusiness);
+    }
+
+    // ============================================
+    // E. DATE OF REGISTRATION
+    // ============================================
+    const datePatterns = [
+      /(?:Date of Registration|Registration Date|Date of Issue)[:\s]+(\d{2})[-\/](\d{2})[-\/](\d{4})/i,
+      /(?:Registered on|Effective from)[:\s]+(\d{2})[-\/](\d{2})[-\/](\d{4})/i,
+    ];
+
+    for (const pattern of datePatterns) {
+      const match = ocrText.match(pattern);
+      if (match) {
+        const day = match[1];
+        const month = match[2];
+        const year = match[3];
+        if (parseInt(day) >= 1 && parseInt(day) <= 31 &&
+            parseInt(month) >= 1 && parseInt(month) <= 12 &&
+            parseInt(year) >= 2000 && parseInt(year) <= 2099) {
+          data.dateOfRegistration = `${day}/${month}/${year}`;
+          if (__DEV__) {
+            console.log('✅ Date of Registration detected:', data.dateOfRegistration);
+          }
+          break;
+        }
+      }
+    }
+
+    // Fallback: Find any date pattern
+    if (!data.dateOfRegistration) {
+      for (const line of lines) {
+        const dateMatch = line.match(/(\d{2})[-\/](\d{2})[-\/](\d{4})/);
+        if (dateMatch) {
+          const day = dateMatch[1];
+          const month = dateMatch[2];
+          const year = dateMatch[3];
+          if (parseInt(day) >= 1 && parseInt(day) <= 31 &&
+              parseInt(month) >= 1 && parseInt(month) <= 12 &&
+              parseInt(year) >= 2000 && parseInt(year) <= 2099) {
+            data.dateOfRegistration = `${day}/${month}/${year}`;
+            break;
+          }
+        }
+      }
+    }
+
+    // ============================================
+    // F. BUSINESS ADDRESS
+    // ============================================
+    const addressPatterns = [
+      /(?:Principal Place of Business|Business Address|Registered Address)[:\s]+([A-Za-z0-9\s,.\-\/()]+?)(?:State|PIN|$)/i,
+      /(?:Address)[:\s]+([A-Za-z0-9\s,.\-\/()]+?)(?:State|PIN|GSTIN|$)/i,
+    ];
+
+    for (const pattern of addressPatterns) {
+      const match = ocrText.match(pattern);
+      if (match && match[1]) {
+        const address = match[1].trim();
+        if (address.length >= 10 && address.length <= 300) {
+          data.businessAddress = address;
+          if (__DEV__) {
+            console.log('✅ Address detected:', data.businessAddress);
+          }
+          break;
+        }
+      }
+    }
+
+    // ============================================
+    // G. STATE / JURISDICTION (if not from GSTIN)
+    // ============================================
+    if (!data.stateJurisdiction) {
+      const statePatterns = [
+        /(?:State|Jurisdiction|State Code)[:\s]+([A-Za-z\s]+?)(?:\n|$)/i,
+      ];
+
+      for (const pattern of statePatterns) {
+        const match = ocrText.match(pattern);
+        if (match && match[1]) {
+          const state = match[1].trim();
+          if (state.length >= 2 && state.length <= 50) {
+            data.stateJurisdiction = state.toUpperCase();
+            break;
+          }
+        }
+      }
+    }
+
+    return data;
+  };
+
+  /**
+   * Handle image upload
+   */
+  const handleUploadImage = async () => {
+    if (isExpoGo) {
+      Alert.alert(
+        'Development Build Required',
+        'Document scanning requires a development build.\n\n' +
+        'OCR will not work in Expo Go, but you can still upload an image and enter details manually.\n\n' +
+        'To enable OCR:\n' +
+        '• Run: npx expo prebuild\n' +
+        '• Run: npx expo run:android',
+        [
+          {
+            text: 'Upload Anyway',
+            onPress: () => proceedWithUpload(),
+          },
+          {
+            text: 'Enter Manually',
+            onPress: () => {
+              setExtractedData({
+                gstin: '',
+                legalName: '',
+                tradeName: '',
+                constitutionOfBusiness: '',
+                dateOfRegistration: '',
+                businessAddress: '',
+                stateJurisdiction: '',
+              });
+              setShowForm(true);
+              setIsManualEntry(true);
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+    
+    await proceedWithUpload();
+  };
+
+  /**
+   * Proceed with image upload after checks
+   */
+  const proceedWithUpload = async () => {
+    try {
+      const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (mediaLibraryStatus.status !== 'granted') {
+        Alert.alert('Permission Required', 'Please grant media library permissions to upload GST certificate.');
+        return;
+      }
+
+      Alert.alert(
+        'Select GST Certificate',
+        'Choose an option',
+        [
+          {
+            text: 'Camera',
+            onPress: async () => {
+              try {
+                const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+                if (cameraStatus.status !== 'granted') {
+                  Alert.alert('Permission Required', 'Please grant camera permissions.');
+                  return;
+                }
+                const result = await ImagePicker.launchCameraAsync({
+                  mediaTypes: ['images'],
+                  allowsEditing: true,
+                  quality: 0.8,
+                });
+
+                if (!result.canceled && result.assets && result.assets[0]) {
+                  await processImage(result.assets[0].uri);
+                }
+              } catch (error: any) {
+                Alert.alert('Error', `Failed to open camera: ${error.message || 'Unknown error'}`);
+              }
+            },
+          },
+          {
+            text: 'Photo Library',
+            onPress: async () => {
+              try {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                  mediaTypes: ['images'],
+                  allowsEditing: true,
+                  quality: 0.8,
+                });
+
+                if (!result.canceled && result.assets && result.assets[0]) {
+                  await processImage(result.assets[0].uri);
+                }
+              } catch (error: any) {
+                Alert.alert('Error', `Failed to open photo library: ${error.message || 'Unknown error'}`);
+              }
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ],
+        { cancelable: true }
+      );
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to open image picker: ${error.message || 'Please try again.'}`);
+    }
+  };
+
+  /**
+   * Process image with OCR
+   */
+  const processImage = async (uri: string) => {
+    const emptyData: ExtractedGSTData = {
+      gstin: '',
+      legalName: '',
+      tradeName: '',
+      constitutionOfBusiness: '',
+      dateOfRegistration: '',
+      businessAddress: '',
+      stateJurisdiction: '',
+    };
+    
+    // Reset state
+    setExtractedData(emptyData);
+    setShowForm(false);
+    setIsConfirmed(false);
+    setIsManualEntry(false);
+    setImageUri(null);
+    
+    setIsProcessing(true);
+    setImageUri(uri);
+
+    // Delete image after processing (security requirement)
+    const deleteImage = async () => {
+      try {
+        const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
+        const filePath = fileUri.replace('file://', '');
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        if (fileInfo.exists) {
+          await FileSystem.deleteAsync(filePath, { idempotent: true });
+          if (__DEV__) {
+            console.log('🗑️ GST image file deleted (security)');
+          }
+        }
+      } catch (deleteError) {
+        if (__DEV__) {
+          console.warn('⚠️ Could not delete GST image file:', deleteError);
+        }
+      }
+    };
+
+    try {
+      if (__DEV__) {
+        console.log('📸 Processing GST certificate for OCR...');
+      }
+
+      let ocrResult;
+      try {
+        ocrResult = await ocrService.recognizeText(uri);
+        
+        if (__DEV__) {
+          console.log('✅ GST OCR Success! Text extracted (length:', ocrResult.text.length, 'chars)');
+        }
+      } catch (ocrError: any) {
+        await deleteImage();
+
+        if (__DEV__) {
+          console.error('❌ GST OCR Error:', ocrError?.name || 'Unknown');
+        }
+        
+        if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
+          Alert.alert(
+            'Development Build Required',
+            'Document scanning requires a development build.\n\n' +
+            'Please use the PowerNetPro app or create a development build.\n\n' +
+            'You can manually enter your GST details below.',
+            [{ text: 'Enter Manually', style: 'default' }]
+          );
+          setExtractedData(emptyData);
+          setShowForm(true);
+          setIsManualEntry(true);
+          setIsProcessing(false);
+          return;
+        }
+        
+        if (ocrError instanceof OCRNotAvailableError) {
+          Alert.alert(
+            'OCR Failed',
+            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
+            'Please manually enter your GST details below.',
+            [{ text: 'Enter Manually', style: 'default' }]
+          );
+          setExtractedData(emptyData);
+          setShowForm(true);
+          setIsManualEntry(true);
+          setIsProcessing(false);
+          return;
+        }
+        
+        Alert.alert(
+          'Processing Error',
+          'Could not process the image. Please try again or enter details manually.',
+          [{ text: 'Enter Manually', style: 'default' }]
+        );
+        setExtractedData(emptyData);
+        setShowForm(true);
+        setIsManualEntry(true);
+        setIsProcessing(false);
+        return;
+      }
+
+      const ocrText = ocrResult.text;
+      const extracted = extractGSTData(ocrText);
+      
+      // Validate GSTIN format
+      const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+      if (extracted.gstin && !gstinRegex.test(extracted.gstin)) {
+        extracted.gstin = '';
+        if (__DEV__) {
+          console.warn('⚠️ Invalid GSTIN format detected, clearing');
+        }
+      }
+      
+      if (__DEV__) {
+        console.log('📊 GST Extraction Results:', {
+          gstin: extracted.gstin ? 'Found' : 'Not detected',
+          legalName: extracted.legalName ? 'Found' : 'Not detected',
+          tradeName: extracted.tradeName ? 'Found' : 'Not detected',
+          constitution: extracted.constitutionOfBusiness ? 'Found' : 'Not detected',
+          date: extracted.dateOfRegistration ? 'Found' : 'Not detected',
+          address: extracted.businessAddress ? 'Found' : 'Not detected',
+          state: extracted.stateJurisdiction ? 'Found' : 'Not detected',
+        });
+      }
+
+      setExtractedData(extracted);
+      setShowForm(true);
+      
+      const hasGSTIN = extracted.gstin && gstinRegex.test(extracted.gstin);
+      setIsManualEntry(!hasGSTIN);
+      
+      await deleteImage();
+      
+      if (__DEV__) {
+        console.log('✅ GST Form displayed with extracted data');
+      }
+      
+      setTimeout(() => {
+        const extractedFields = [];
+        if (extracted.gstin) extractedFields.push('GSTIN');
+        if (extracted.legalName) extractedFields.push('Legal Name');
+        if (extracted.tradeName) extractedFields.push('Trade Name');
+        if (extracted.constitutionOfBusiness) extractedFields.push('Constitution');
+        if (extracted.dateOfRegistration) extractedFields.push('Date');
+        if (extracted.businessAddress) extractedFields.push('Address');
+        if (extracted.stateJurisdiction) extractedFields.push('State');
+        
+        const summary = extractedFields.length > 0 
+          ? `Extracted: ${extractedFields.join(', ')}`
+          : 'No data extracted. Please enter details manually.';
+        
+        Alert.alert(
+          'OCR Complete ✅',
+          `${summary}\nGSTIN: ${extracted.gstin || 'Not found'}\n\nPlease verify and edit if needed.`,
+          [{ text: 'OK' }]
+        );
+      }, 500);
+      
+    } catch (error: any) {
+      await deleteImage();
+
+      if (__DEV__) {
+        console.error('❌ Unexpected error in GST processImage:', error);
+      }
+      
+      Alert.alert(
+        'Processing Error',
+        'An error occurred while processing the image. You can manually enter the details below.',
+        [{ text: 'OK' }]
+      );
+      setExtractedData(emptyData);
+      setShowForm(true);
+      setIsManualEntry(true);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * Handle form submission
+   */
+  const handleSubmit = async () => {
+    if (!isConfirmed) {
+      Alert.alert('Confirmation Required', 'Please confirm that the GST details are correct.');
+      return;
+    }
+
+    const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    if (!extractedData.gstin || !gstinRegex.test(extractedData.gstin)) {
+      Alert.alert('Invalid GSTIN', 'Please ensure a valid GSTIN is entered (15 characters).');
+      return;
+    }
+
+    if (!extractedData.legalName || extractedData.legalName.length < 3) {
+      Alert.alert('Required Field', 'Please enter the Legal Name of Business.');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+
+      // Store locally in Zustand (Phase-1: No Supabase)
+      setKYCData({
+        userId: 'current_user_id',
+        documentType: 'gst',
+        documentNumber: extractedData.gstin,
+        name: extractedData.legalName,
+        address: extractedData.businessAddress || undefined,
+        status: 'pending',
+        submittedAt: new Date(),
+      });
+
+      Alert.alert(
+        'Success',
+        'Your GST certificate details have been submitted for verification. You will be notified once verification is complete.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert(
+        'Error',
+        `Failed to submit GST data: ${error.message || 'Unknown error'}. Please try again.`
+      );
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <LinearGradient
+        colors={['#f59e0b', '#d97706']}
+        style={styles.gradientHeader}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>GST Certificate</Text>
+            <Text style={styles.headerSubtitle}>Upload and extract details</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          {/* Upload Section */}
+          <View style={styles.uploadSection}>
+            <View style={styles.uploadIconContainer}>
+              <MaterialCommunityIcons name="file-certificate" size={64} color="#f59e0b" />
+            </View>
+            <Text style={styles.uploadTitle}>Upload GST Certificate</Text>
+            <Text style={styles.uploadSubtitle}>
+              Take a clear photo or select from gallery. Ensure all text is visible.
+            </Text>
+
+            {imageUri && isProcessing && (
+              <View style={styles.processingContainer}>
+                <ActivityIndicator size="large" color="#f59e0b" />
+                <Text style={styles.processingText}>Processing image with OCR...</Text>
+              </View>
+            )}
+
+            {imageUri && !isProcessing && (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.uploadButton}
+              onPress={handleUploadImage}
+              disabled={isProcessing}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={['#f59e0b', '#d97706']}
+                style={styles.uploadButtonGradient}
+              >
+                <Ionicons name="camera" size={24} color="#ffffff" />
+                <Text style={styles.uploadButtonText}>
+                  {imageUri ? 'Upload Another Image' : 'Upload GST Certificate'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            {!showForm && (
+              <TouchableOpacity
+                style={styles.manualEntryButton}
+                onPress={() => {
+                  setExtractedData({
+                    gstin: '',
+                    legalName: '',
+                    tradeName: '',
+                    constitutionOfBusiness: '',
+                    dateOfRegistration: '',
+                    businessAddress: '',
+                    stateJurisdiction: '',
+                  });
+                  setShowForm(true);
+                  setIsManualEntry(true);
+                  setImageUri(null);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.manualEntryButtonText}>Enter Details Manually</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Form Section */}
+          {showForm && (
+            <View style={styles.formSection}>
+              <Text style={styles.formHelperText}>Please verify your GST certificate details</Text>
+
+              {/* GSTIN */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>GSTIN *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.gstin}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, gstin: formatGSTIN(text) })}
+                  placeholder="Enter GSTIN (15 characters)"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={15}
+                />
+                <Text style={styles.inputHint}>Format: 22AAAAA0000A1Z5</Text>
+              </View>
+
+              {/* Legal Name */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Legal Name of Business *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.legalName}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, legalName: text.toUpperCase() })}
+                  placeholder="Enter legal business name"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={150}
+                />
+              </View>
+
+              {/* Trade Name */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Trade Name (Optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.tradeName}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, tradeName: text.toUpperCase() })}
+                  placeholder="Enter trade name if different"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={150}
+                />
+              </View>
+
+              {/* Constitution of Business */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Constitution of Business</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.constitutionOfBusiness}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, constitutionOfBusiness: text.toUpperCase() })}
+                  placeholder="e.g., Proprietorship, Pvt Ltd, LLP"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={50}
+                />
+              </View>
+
+              {/* Date of Registration */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Date of Registration</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.dateOfRegistration}
+                  onChangeText={(text) => {
+                    const formatted = formatDate(text);
+                    setExtractedData({ ...extractedData, dateOfRegistration: formatted });
+                  }}
+                  placeholder="DD/MM/YYYY"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              {/* Business Address */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Principal Place of Business</Text>
+                <TextInput
+                  style={[styles.input, styles.inputMultiline]}
+                  value={extractedData.businessAddress}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, businessAddress: text })}
+                  placeholder="Enter complete business address"
+                  placeholderTextColor="#9ca3af"
+                  multiline
+                  numberOfLines={3}
+                  maxLength={300}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* State / Jurisdiction */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>State / Jurisdiction</Text>
+                <TextInput
+                  style={styles.input}
+                  value={extractedData.stateJurisdiction}
+                  onChangeText={(text) => setExtractedData({ ...extractedData, stateJurisdiction: text.toUpperCase() })}
+                  placeholder="Enter state"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  maxLength={50}
+                />
+              </View>
+
+              {/* Confirmation Checkbox */}
+              <View style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={styles.checkbox}
+                  onPress={() => setIsConfirmed(!isConfirmed)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.checkboxBox, isConfirmed && styles.checkboxBoxChecked]}>
+                    {isConfirmed && <Ionicons name="checkmark" size={16} color="#ffffff" />}
+                  </View>
+                  <Text style={styles.checkboxLabel}>
+                    I confirm the above GST certificate details are correct
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                style={[styles.submitButton, !isConfirmed && styles.submitButtonDisabled]}
+                onPress={handleSubmit}
+                disabled={!isConfirmed || isProcessing}
+                activeOpacity={0.7}
+              >
+                <LinearGradient
+                  colors={isConfirmed ? ['#f59e0b', '#d97706'] : ['#9ca3af', '#6b7280']}
+                  style={styles.submitButtonGradient}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>Submit for Verification</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Retake Button */}
+              <TouchableOpacity
+                style={styles.retakeButton}
+                onPress={() => {
+                  setShowForm(false);
+                  setImageUri(null);
+                  setExtractedData({
+                    gstin: '',
+                    legalName: '',
+                    tradeName: '',
+                    constitutionOfBusiness: '',
+                    dateOfRegistration: '',
+                    businessAddress: '',
+                    stateJurisdiction: '',
+                  });
+                  setIsConfirmed(false);
+                  setIsManualEntry(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.retakeButtonText}>Scan Another Image</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fffbeb',
+  },
+  gradientHeader: {
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#fef3c7',
+    fontWeight: '500',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: 20,
+  },
+  uploadSection: {
+    alignItems: 'center',
+  },
+  uploadIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#fef3c7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  uploadTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  uploadSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 20,
+  },
+  processingContainer: {
+    alignItems: 'center',
+    marginVertical: 24,
+    padding: 24,
+  },
+  processingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  imagePreviewContainer: {
+    width: '100%',
+    maxHeight: 300,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 24,
+    backgroundColor: '#f3f4f6',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 300,
+  },
+  uploadButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: '100%',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  uploadButtonGradient: {
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  uploadButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  formSection: {
+    marginTop: 32,
+  },
+  formHelperText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
+    fontWeight: '500',
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#111827',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  inputMultiline: {
+    minHeight: 80,
+    paddingTop: 12,
+  },
+  inputHint: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 4,
+  },
+  checkboxContainer: {
+    marginBottom: 24,
+  },
+  checkbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkboxBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    color: '#374151',
+    flex: 1,
+  },
+  submitButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 12,
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  submitButtonDisabled: {
+    shadowOpacity: 0.1,
+    elevation: 2,
+  },
+  submitButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  retakeButton: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  retakeButtonText: {
+    color: '#f59e0b',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  manualEntryButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  manualEntryButtonText: {
+    color: '#f59e0b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
