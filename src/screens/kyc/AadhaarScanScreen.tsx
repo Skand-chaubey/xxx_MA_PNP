@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import { ocrService } from '@/services/mlkit/ocrService';
+import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
 import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabaseDatabaseService } from '@/services/supabase/databaseService';
@@ -53,6 +53,16 @@ export default function AadhaarScanScreen({ navigation }: Props) {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isManualEntry, setIsManualEntry] = useState(false); // Track if entered manually
   const [needsBackSide, setNeedsBackSide] = useState(false); // Track if back side is needed
+  const [isExpoGo, setIsExpoGo] = useState(false); // Track if running in Expo Go
+
+  // Check if running in Expo Go on mount
+  useEffect(() => {
+    const checkExpoGo = ocrService.isRunningInExpoGo();
+    setIsExpoGo(checkExpoGo);
+    if (checkExpoGo && __DEV__) {
+      console.log('📱 Running in Expo Go - OCR disabled');
+    }
+  }, []);
 
   /**
    * Mask Aadhaar number: XXXX-XXXX-1234
@@ -184,6 +194,20 @@ export default function AadhaarScanScreen({ navigation }: Props) {
         const digits = (match[1] + match[2] + match[3]).replace(/\D/g, '');
         if (digits.length === 12) {
           data.aadhaarNumber = digits;
+        }
+      }
+    }
+    
+    // Priority 4: Find any continuous 12-digit sequence (last resort)
+    if (!data.aadhaarNumber) {
+      // Look for any 12 consecutive digits in the entire text
+      const allDigits = ocrText.replace(/\D/g, '');
+      // Check if there's a 12-digit sequence (Aadhaar numbers don't start with 0 or 1)
+      const aadhaarMatch = allDigits.match(/[2-9]\d{11}/);
+      if (aadhaarMatch) {
+        data.aadhaarNumber = aadhaarMatch[0];
+        if (__DEV__) {
+          console.log('✅ Aadhaar found via Priority 4 (12-digit sequence)');
         }
       }
     }
@@ -526,6 +550,50 @@ export default function AadhaarScanScreen({ navigation }: Props) {
    * Handle image upload
    */
   const handleUploadImage = async () => {
+    // Check if running in Expo Go - show warning but still allow upload
+    // The OCR will fail gracefully and show manual entry form
+    if (isExpoGo) {
+      Alert.alert(
+        'Development Build Required',
+        'Document scanning requires a development build.\n\n' +
+        'OCR will not work in Expo Go, but you can still upload an image and enter details manually.\n\n' +
+        'To enable OCR:\n' +
+        '• Run: npx expo prebuild\n' +
+        '• Run: npx expo run:android',
+        [
+          {
+            text: 'Upload Anyway',
+            onPress: () => proceedWithUpload(),
+          },
+          {
+            text: 'Enter Manually',
+            onPress: () => {
+              setExtractedData({
+                fullName: '',
+                aadhaarNumber: '',
+                dateOfBirth: '',
+                address: '',
+              });
+              setShowForm(true);
+              setIsManualEntry(true);
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return;
+    }
+    
+    await proceedWithUpload();
+  };
+
+  /**
+   * Proceed with image upload after checks
+   */
+  const proceedWithUpload = async () => {
     try {
       // Request media library permissions first
       const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -622,72 +690,59 @@ export default function AadhaarScanScreen({ navigation }: Props) {
     setIsProcessing(true);
     setImageUri(uri);
 
+    // CRITICAL: Delete image after processing (security requirement)
+    const deleteImage = async () => {
+      try {
+        const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
+        const filePath = fileUri.replace('file://', '');
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        if (fileInfo.exists) {
+          await FileSystem.deleteAsync(filePath, { idempotent: true });
+          if (__DEV__) {
+            console.log('🗑️ Image file deleted (security)');
+          }
+        }
+      } catch (deleteError) {
+        // Silently handle deletion errors
+        if (__DEV__) {
+          console.warn('⚠️ Could not delete image file:', deleteError);
+        }
+      }
+    };
+
     try {
       if (__DEV__) {
-        console.log('📸 Processing image for OCR:', uri.substring(0, 100));
+        console.log('📸 Processing image for OCR...');
+        // DO NOT log URI (contains user file path)
       }
 
-      // Try to perform OCR - check if ML Kit is available first
+      // Try to perform OCR
       let ocrResult;
       try {
-        // Ensure URI is accessible - copy to local file if needed
-        let processedUri = uri;
+        ocrResult = await ocrService.recognizeText(uri);
         
-        // If URI is not a file:// URI, we might need to handle it differently
-        // For now, try with the original URI
-        if (__DEV__) {
-          console.log('🔍 Attempting OCR with URI:', processedUri.substring(0, 100));
-        }
-
-        ocrResult = await ocrService.recognizeText(processedUri);
-        
-        // DO NOT log OCR text (security requirement - contains sensitive data)
         if (__DEV__) {
           console.log('✅ OCR Success! Text extracted (length:', ocrResult.text.length, 'chars)');
+          // NEVER log OCR text (contains sensitive PII data)
         }
       } catch (ocrError: any) {
+        // CRITICAL: Delete image before showing error
+        await deleteImage();
+
         if (__DEV__) {
-          console.error('❌ OCR Error:', ocrError?.message || ocrError);
-          console.error('Error type:', ocrError?.code || 'Unknown');
+          console.error('❌ OCR Error:', ocrError?.name || 'Unknown');
         }
         
-        // If OCR is not available (ML Kit not linked), proceed with manual entry
-        if (ocrError?.message === 'OCR_REQUIRES_DEV_BUILD' ||
-            ocrError?.message?.includes('not available') || 
-            ocrError?.message?.includes('development build') ||
-            ocrError?.message?.includes('not linked') ||
-            ocrError?.code === 'MODULE_NOT_FOUND') {
-          // Check if mock OCR is enabled
-          const enableMockOCR = Constants.expoConfig?.extra?.enableMockOCR;
-          
-          if (enableMockOCR) {
-            // Mock OCR should have worked, but if we're here, something else failed
-            // Just show manual entry
-            setExtractedData(emptyData);
-            setShowForm(true);
-            setIsManualEntry(true);
-            setIsProcessing(false);
-            return;
-          }
-          
-          // OCR not available - show form for manual entry with helpful instructions
+        // Handle Expo Go detection
+        if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
           Alert.alert(
-            'OCR Not Available',
-            'OCR requires a development build to work.\n\n' +
-            'To enable OCR:\n' +
+            'Development Build Required',
+            'Document scanning requires a development build.\n\n' +
+            'Please use the PowerNetPro app or create a development build:\n\n' +
             '1. Run: npx expo prebuild\n' +
             '2. Run: npx expo run:android\n\n' +
-            'For now, you can manually enter the details below.',
-            [
-              {
-                text: 'Enter Manually',
-                style: 'default',
-              },
-              {
-                text: 'OK',
-                style: 'cancel',
-              },
-            ]
+            'You can manually enter your Aadhaar details below.',
+            [{ text: 'Enter Manually', style: 'default' }]
           );
           setExtractedData(emptyData);
           setShowForm(true);
@@ -696,31 +751,26 @@ export default function AadhaarScanScreen({ navigation }: Props) {
           return;
         }
         
-        // For other errors, show alert but still allow manual entry
-        const errorMessage = ocrError?.message || 'Unknown error';
-        const isNotLinkedError = errorMessage.includes('doesn\'t seem to be linked') ||
-                                 errorMessage.includes('not linked') ||
-                                 errorMessage.includes('Make sure:');
+        // Handle OCR not available error
+        if (ocrError instanceof OCRNotAvailableError) {
+          Alert.alert(
+            'OCR Failed',
+            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
+            'Please manually enter your Aadhaar details below.',
+            [{ text: 'Enter Manually', style: 'default' }]
+          );
+          setExtractedData(emptyData);
+          setShowForm(true);
+          setIsManualEntry(true);
+          setIsProcessing(false);
+          return;
+        }
         
+        // Handle generic OCR errors
         Alert.alert(
-          'OCR Processing Failed',
-          isNotLinkedError
-            ? `ML Kit is not properly linked. This requires a development build.\n\n` +
-              `To enable OCR:\n` +
-              `1. Run: npx expo prebuild\n` +
-              `2. Run: npx expo run:android\n\n` +
-              `For now, you can manually enter the details below.`
-            : `Could not extract text from image.\n\nError: ${errorMessage}\n\nYou can manually enter the details below.`,
-          [
-            {
-              text: 'Enter Manually',
-              style: 'default',
-            },
-            {
-              text: 'OK',
-              style: 'cancel',
-            },
-          ]
+          'Processing Error',
+          'Could not process the image. Please try again or enter details manually.',
+          [{ text: 'Enter Manually', style: 'default' }]
         );
         setExtractedData(emptyData);
         setShowForm(true);
@@ -828,42 +878,18 @@ export default function AadhaarScanScreen({ navigation }: Props) {
       const finalAadhaarNumber = hasAadhaarNumber ? extracted.aadhaarNumber : '';
       
       // ============================================
-      // STEP 6: IMAGE DELETION (AFTER STATE UPDATE)
+      // STEP 6: IMAGE DELETION (SECURITY)
       // ============================================
-      // CRITICAL: Delete image ONLY AFTER:
-      // 1) extractAadhaarData() completes
-      // 2) setExtractedData() is executed
-      // This prevents ML Kit race conditions and ensures extraction completes
-      try {
-        const fileUri = uri.startsWith('file://') ? uri : `file://${uri}`;
-        const filePath = fileUri.replace('file://', '');
-        const fileInfo = await FileSystem.getInfoAsync(filePath);
-        if (fileInfo.exists) {
-          await FileSystem.deleteAsync(filePath, { idempotent: true });
-          if (__DEV__) {
-            console.log('🗑️ Image file deleted after extraction and state update');
-          }
-        }
-      } catch (deleteError) {
-        // Silently handle deletion errors - not critical
-        if (__DEV__) {
-          console.warn('⚠️ Could not delete image file:', deleteError);
-        }
-      }
+      // CRITICAL: Always delete image after OCR
+      await deleteImage();
       
       if (__DEV__) {
         console.log('✅ Form displayed with extracted data');
-        console.log('📋 Final values for alert:', {
-          name: extracted.fullName || 'Not found',
-          aadhaar: finalAadhaarNumber ? maskAadhaarNumber(finalAadhaarNumber) : 'Not found',
-          dob: extracted.dateOfBirth || 'Not found',
-          address: extracted.address || 'Not found',
-        });
+        // DO NOT log extracted values (contains PII)
       }
       
-      // Show success message with extracted fields (no back side prompt, no mock warning)
+      // Show success message with extracted fields
       setTimeout(() => {
-        // Build extraction summary
         const extractedFields = [];
         if (extracted.fullName) extractedFields.push('Name');
         if (finalAadhaarNumber) extractedFields.push('Aadhaar Number');
@@ -872,12 +898,10 @@ export default function AadhaarScanScreen({ navigation }: Props) {
         
         const summary = extractedFields.length > 0 
           ? `Extracted: ${extractedFields.join(', ')}`
-          : 'Please enter details manually';
+          : 'No data extracted. Please enter details manually.';
         
-        // CRITICAL: Use finalAadhaarNumber (the actual extracted value) for alert
         const maskedAadhaar = finalAadhaarNumber ? maskAadhaarNumber(finalAadhaarNumber) : 'Not found';
         
-        // Simple success message - no back side prompt, no mock warning
         Alert.alert(
           'OCR Complete ✅',
           `${summary}\nAadhaar: ${maskedAadhaar}\n\nPlease verify and edit if needed.`,
@@ -885,14 +909,14 @@ export default function AadhaarScanScreen({ navigation }: Props) {
         );
       }, 500);
       
-      // Image file has been deleted after OCR (for security)
-      // Image URI is kept for preview only (file already deleted)
     } catch (error: any) {
+      // CRITICAL: Always delete image on error
+      await deleteImage();
+
       if (__DEV__) {
         console.error('❌ Unexpected error in processImage:', error);
       }
       
-      // If OCR completely fails, show form with empty fields for manual entry
       Alert.alert(
         'Processing Error',
         'An error occurred while processing the image. You can manually enter the details below.',
@@ -900,7 +924,7 @@ export default function AadhaarScanScreen({ navigation }: Props) {
       );
       setExtractedData(emptyData);
       setShowForm(true);
-      setIsManualEntry(true); // Allow editing all fields
+      setIsManualEntry(true);
     } finally {
       setIsProcessing(false);
     }
@@ -1106,9 +1130,17 @@ export default function AadhaarScanScreen({ navigation }: Props) {
             'aadhaar',
             blob
           );
-        } catch (uploadError) {
-          // Continue even if upload fails
-          console.warn('Failed to upload image:', uploadError);
+        } catch (uploadError: any) {
+          // Continue even if upload fails - common in emulator/network issues
+          // KYC can still be submitted with data but without image URL
+          if (__DEV__) {
+            const errorMsg = uploadError?.message || 'Unknown error';
+            if (errorMsg.includes('Network') || errorMsg.includes('network')) {
+              console.log('ℹ️ Image upload skipped (network unavailable) - KYC data will be saved without image');
+            } else {
+              console.warn('⚠️ Image upload failed:', errorMsg, '- continuing without image URL');
+            }
+          }
         }
       }
 

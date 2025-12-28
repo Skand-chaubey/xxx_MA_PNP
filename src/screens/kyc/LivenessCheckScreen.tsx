@@ -84,13 +84,15 @@ export default function LivenessCheckScreen({ onComplete, onCancel }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        facing={facing}
-        mode="picture"
-      >
-        <View style={styles.overlay}>
+      <View style={styles.cameraContainer}>
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing={facing}
+          mode="picture"
+        />
+        {/* Overlay rendered outside CameraView with absolute positioning */}
+        <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.header}>
             <TouchableOpacity onPress={onCancel} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
@@ -123,7 +125,7 @@ export default function LivenessCheckScreen({ onComplete, onCancel }: Props) {
             </TouchableOpacity>
           </View>
         </View>
-      </CameraView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -133,10 +135,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
+  cameraContainer: {
+    flex: 1,
+    position: 'relative',
+  },
   camera: {
     flex: 1,
   },
   overlay: {
+    ...StyleSheet.absoluteFillObject,
     flex: 1,
     backgroundColor: 'transparent',
   },
