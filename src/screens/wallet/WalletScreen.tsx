@@ -15,6 +15,8 @@ import { RootStackParamList } from '@/types';
 import { useWalletStore } from '@/store';
 import { formatCurrency, formatEnergy, getTimeAgo } from '@/utils/helpers';
 import { Transaction } from '@/types';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type WalletScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Wallet'>;
 
@@ -23,6 +25,9 @@ interface Props {
 }
 
 export default function WalletScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const { wallet, transactions } = useWalletStore();
 
   const handleTopUp = () => {
@@ -51,18 +56,18 @@ export default function WalletScreen({ navigation }: Props) {
   const renderTransaction = ({ item }: { item: Transaction }) => {
     const isPositive = item.type === 'energy_sale' || item.type === 'topup';
     const amountPrefix = isPositive ? '+' : '-';
-    const amountColor = isPositive ? '#10b981' : '#ef4444';
+    const amountColor = isPositive ? colors.success : colors.error;
 
     return (
-      <View style={styles.transactionItem}>
+      <View style={[styles.transactionItem, { backgroundColor: colors.card }]}>
         <View style={styles.transactionIconContainer}>
           {getTransactionIcon(item.type || '')}
         </View>
         <View style={styles.transactionInfo}>
-          <Text style={styles.transactionType}>
+          <Text style={[styles.transactionType, { color: colors.text }]}>
             {item.type ? item.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Transaction'}
           </Text>
-          <Text style={styles.transactionTime}>
+          <Text style={[styles.transactionTime, { color: colors.textMuted }]}>
             {item.createdAt ? getTimeAgo(item.createdAt) : 'Unknown time'}
           </Text>
         </View>
@@ -75,7 +80,7 @@ export default function WalletScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <LinearGradient
         colors={['#10b981', '#059669']}
         style={styles.gradientHeader}
@@ -149,26 +154,26 @@ export default function WalletScreen({ navigation }: Props) {
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionButton, styles.withdrawButton]}
+              style={[styles.actionButton, styles.withdrawButton, { borderColor: colors.primary }]}
               onPress={handleWithdraw}
               activeOpacity={0.8}
             >
               <View style={styles.withdrawButtonContent}>
-                <Ionicons name="cash-outline" size={24} color="#10b981" />
-                <Text style={styles.withdrawButtonText}>Withdraw</Text>
+                <Ionicons name="cash-outline" size={24} color={colors.primary} />
+                <Text style={[styles.withdrawButtonText, { color: colors.primary }]}>Withdraw</Text>
               </View>
             </TouchableOpacity>
           </View>
 
           {/* Transaction History */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Transaction History</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Transaction History</Text>
             {transactions.length > 0 && (
-              <Text style={styles.sectionCount}>{transactions.length} transactions</Text>
+              <Text style={[styles.sectionCount, { color: colors.textMuted }]}>{transactions.length} transactions</Text>
             )}
           </View>
           {transactions.length > 0 ? (
-            <View style={styles.transactionsContainer}>
+            <View style={[styles.transactionsContainer, { backgroundColor: colors.card }]}>
               <FlatList
                 data={transactions}
                 renderItem={renderTransaction}
@@ -178,10 +183,10 @@ export default function WalletScreen({ navigation }: Props) {
               />
             </View>
           ) : (
-            <View style={styles.emptyTransactions}>
-              <MaterialCommunityIcons name="history" size={48} color="#d1d5db" />
-              <Text style={styles.emptyText}>No transactions yet</Text>
-              <Text style={styles.emptySubtext}>
+            <View style={[styles.emptyTransactions, { backgroundColor: colors.card }]}>
+              <MaterialCommunityIcons name="history" size={48} color={colors.textMuted} />
+              <Text style={[styles.emptyText, { color: colors.text }]}>No transactions yet</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
                 Your transaction history will appear here
               </Text>
             </View>

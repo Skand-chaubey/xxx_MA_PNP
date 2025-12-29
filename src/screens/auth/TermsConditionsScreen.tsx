@@ -10,6 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type TermsConditionsScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -92,17 +94,20 @@ const PRIVACY_POINTS = [
 ];
 
 export default function TermsConditionsScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Terms & Conditions</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Terms & Conditions</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -114,41 +119,41 @@ export default function TermsConditionsScreen({ navigation }: Props) {
       >
         {/* Main Title */}
         <View style={styles.titleSection}>
-          <Text style={styles.mainTitle}>PowerNetPro</Text>
-          <Text style={styles.mainSubtitle}>Terms & Conditions</Text>
-          <Text style={styles.lastUpdated}>Last Updated: December 2025</Text>
+          <Text style={[styles.mainTitle, { color: colors.primary }]}>PowerNetPro</Text>
+          <Text style={[styles.mainSubtitle, { color: colors.text }]}>Terms & Conditions</Text>
+          <Text style={[styles.lastUpdated, { color: colors.textMuted }]}>Last Updated: December 2025</Text>
         </View>
 
         {/* Terms Sections */}
         <View style={styles.sectionsContainer}>
           {TERMS_SECTIONS.map((section, index) => (
             <View key={index} style={styles.section}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionContent}>{section.content}</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>{section.title}</Text>
+              <Text style={[styles.sectionContent, { color: colors.textSecondary }]}>{section.content}</Text>
             </View>
           ))}
         </View>
 
         {/* Divider */}
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         {/* Privacy Policy Section */}
         <View style={styles.privacySection}>
-          <Text style={styles.privacyTitle}>Privacy Policy Summary</Text>
+          <Text style={[styles.privacyTitle, { color: colors.text }]}>Privacy Policy Summary</Text>
           <View style={styles.privacyPoints}>
             {PRIVACY_POINTS.map((point, index) => (
               <View key={index} style={styles.privacyPoint}>
-                <View style={styles.bullet} />
-                <Text style={styles.privacyText}>{point}</Text>
+                <View style={[styles.bullet, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.privacyText, { color: colors.textSecondary }]}>{point}</Text>
               </View>
             ))}
           </View>
         </View>
 
         {/* Footer Note */}
-        <View style={styles.footerNote}>
-          <Ionicons name="shield-checkmark" size={20} color="#10b981" />
-          <Text style={styles.footerText}>
+        <View style={[styles.footerNote, { backgroundColor: colors.primaryLight }]}>
+          <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
+          <Text style={[styles.footerText, { color: colors.primary }]}>
             Your data is protected under Indian data protection laws
           </Text>
         </View>

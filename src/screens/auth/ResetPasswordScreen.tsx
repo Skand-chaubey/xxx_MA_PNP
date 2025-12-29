@@ -16,6 +16,8 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '@/types';
 import { validatePassword, passwordsMatch, PasswordValidation } from '@/utils/passwordValidation';
 import { supabaseAuthService } from '@/services/supabase/authService';
+import { useTheme } from '@/contexts';
+import { getThemedColors, ThemedColors } from '@/utils/themedStyles';
 
 type ResetPasswordScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -35,22 +37,26 @@ interface Props {
 interface PasswordRequirementProps {
   label: string;
   met: boolean;
+  colors: ThemedColors;
 }
 
-const PasswordRequirement = ({ label, met }: PasswordRequirementProps) => (
+const PasswordRequirement = ({ label, met, colors }: PasswordRequirementProps) => (
   <View style={styles.requirementRow}>
     <Ionicons
       name={met ? 'checkmark-circle' : 'ellipse-outline'}
       size={16}
-      color={met ? '#10b981' : '#9ca3af'}
+      color={met ? colors.success : colors.textMuted}
     />
-    <Text style={[styles.requirementText, met && styles.requirementMet]}>
+    <Text style={[styles.requirementText, { color: colors.textSecondary }, met && { color: colors.success }]}>
       {label}
     </Text>
   </View>
 );
 
 export default function ResetPasswordScreen({ navigation, route }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const { email } = route.params;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -124,7 +130,7 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -137,27 +143,28 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={styles.content}>
           {/* Icon */}
-          <View style={styles.iconContainer}>
-            <Ionicons name="key-outline" size={48} color="#10b981" />
+          <View style={[styles.iconContainer, { backgroundColor: colors.primaryLight }]}>
+            <Ionicons name="key-outline" size={48} color={colors.primary} />
           </View>
 
-          <Text style={styles.title}>Create New Password</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.text }]}>Create New Password</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Your new password must be different from previously used passwords and
             meet our security requirements.
           </Text>
 
           {/* New Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>New Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>New Password</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 passwordTouched && !passwordValidation.isValid
                   ? styles.inputError
                   : passwordTouched && passwordValidation.isValid
@@ -168,13 +175,13 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textMuted}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Enter new password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -192,43 +199,49 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
                 <Ionicons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={22}
-                  color="#6b7280"
+                  color={colors.textMuted}
                 />
               </TouchableOpacity>
             </View>
 
             {/* Password Requirements - Always visible */}
-            <View style={styles.requirementsContainer}>
-              <Text style={styles.requirementsTitle}>Password must contain:</Text>
+            <View style={[styles.requirementsContainer, { backgroundColor: colors.backgroundSecondary }]}>
+              <Text style={[styles.requirementsTitle, { color: colors.text }]}>Password must contain:</Text>
               <PasswordRequirement
                 label="At least 8 characters"
                 met={passwordValidation.hasMinLength}
+                colors={colors}
               />
               <PasswordRequirement
                 label="One uppercase letter (A-Z)"
                 met={passwordValidation.hasUppercase}
+                colors={colors}
               />
               <PasswordRequirement
                 label="One lowercase letter (a-z)"
                 met={passwordValidation.hasLowercase}
+                colors={colors}
               />
               <PasswordRequirement
                 label="One number (0-9)"
                 met={passwordValidation.hasNumber}
+                colors={colors}
               />
               <PasswordRequirement
                 label="One special character (!@#$%^&*)"
                 met={passwordValidation.hasSpecialChar}
+                colors={colors}
               />
             </View>
           </View>
 
           {/* Confirm Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm New Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Confirm New Password</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 confirmPasswordTouched && confirmPassword.length > 0
                   ? doPasswordsMatch
                     ? styles.inputSuccess
@@ -239,13 +252,13 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textMuted}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Confirm new password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -263,7 +276,7 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
                 <Ionicons
                   name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={22}
-                  color="#6b7280"
+                  color={colors.textMuted}
                 />
               </TouchableOpacity>
             </View>
@@ -272,12 +285,12 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
                 <Ionicons
                   name={doPasswordsMatch ? 'checkmark-circle' : 'close-circle'}
                   size={16}
-                  color={doPasswordsMatch ? '#10b981' : '#ef4444'}
+                  color={doPasswordsMatch ? colors.success : colors.error}
                 />
                 <Text
                   style={[
                     styles.matchText,
-                    { color: doPasswordsMatch ? '#10b981' : '#ef4444' },
+                    { color: doPasswordsMatch ? colors.success : colors.error },
                   ]}
                 >
                   {doPasswordsMatch ? 'Passwords match' : 'Passwords do not match'}
@@ -289,8 +302,8 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
           {/* Error Message */}
           {error ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={16} color="#ef4444" />
-              <Text style={styles.errorText}>{error}</Text>
+              <Ionicons name="alert-circle" size={16} color={colors.error} />
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           ) : null}
 

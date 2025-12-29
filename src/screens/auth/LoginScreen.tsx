@@ -20,6 +20,8 @@ import {
 } from '@/utils/authValidation';
 import { authService } from '@/services/api/authService';
 import { useAuthStore } from '@/store';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -28,6 +30,8 @@ interface Props {
 }
 
 export default function LoginScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
   // Form state
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -176,7 +180,7 @@ export default function LoginScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -185,15 +189,16 @@ export default function LoginScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>PowerNetPro</Text>
-          <Text style={styles.subtitle}>Democratizing Energy</Text>
+          <Text style={[styles.title, { color: colors.primary }]}>PowerNetPro</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Democratizing Energy</Text>
 
           {/* Email or Mobile Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email or Mobile Number</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email or Mobile Number</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 identifierTouched && !identifierValidation.isValid && identifier.length > 0
                   ? styles.inputError
                   : identifierTouched && identifierValidation.isValid
@@ -202,15 +207,16 @@ export default function LoginScreen({ navigation }: Props) {
               ]}
             >
               {identifierType === 'mobile' && (
-                <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+                <Text style={[styles.countryCode, { color: colors.text }]}>{INDIA_COUNTRY_CODE}</Text>
               )}
               <TextInput
                 style={[
                   styles.input,
+                  { color: colors.inputText },
                   identifierType === 'mobile' && styles.inputWithPrefix,
                 ]}
                 placeholder={getPlaceholder()}
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType={getKeyboardType()}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -226,30 +232,31 @@ export default function LoginScreen({ navigation }: Props) {
                 <Ionicons
                   name={identifierValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
                   size={20}
-                  color={identifierValidation.isValid ? '#10b981' : '#ef4444'}
+                  color={identifierValidation.isValid ? colors.success : colors.error}
                 />
               )}
             </View>
             {identifierTouched && !identifierValidation.isValid && identifier.length > 0 && (
-              <Text style={styles.errorText}>{identifierValidation.error}</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{identifierValidation.error}</Text>
             )}
           </View>
 
           {/* Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 passwordTouched && !isPasswordValid && password.length > 0
                   ? styles.inputError
                   : null,
               ]}
             >
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Enter your password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -268,12 +275,12 @@ export default function LoginScreen({ navigation }: Props) {
                 <Ionicons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={22}
-                  color="#6b7280"
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
             </View>
             {passwordTouched && !isPasswordValid && password.length === 0 && (
-              <Text style={styles.errorText}>Password is required</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>Password is required</Text>
             )}
             
             {/* Forgot Password Link */}
@@ -281,15 +288,15 @@ export default function LoginScreen({ navigation }: Props) {
               style={styles.forgotPasswordButton}
               onPress={() => navigation.navigate('ForgotPassword')}
             >
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>Forgot Password?</Text>
             </TouchableOpacity>
           </View>
 
           {/* Server Error */}
           {serverError ? (
-            <View style={styles.serverErrorContainer}>
-              <Ionicons name="alert-circle" size={16} color="#ef4444" />
-              <Text style={styles.serverErrorText}>{serverError}</Text>
+            <View style={[styles.serverErrorContainer, { backgroundColor: colors.errorBackground }]}>
+              <Ionicons name="alert-circle" size={16} color={colors.error} />
+              <Text style={[styles.serverErrorText, { color: colors.error }]}>{serverError}</Text>
             </View>
           ) : null}
 
@@ -303,22 +310,22 @@ export default function LoginScreen({ navigation }: Props) {
               }}
               activeOpacity={0.7}
             >
-              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+              <View style={[styles.checkbox, { borderColor: colors.inputBorder }, termsAccepted && styles.checkboxChecked]}>
                 {termsAccepted && (
                   <Ionicons name="checkmark" size={14} color="#ffffff" />
                 )}
               </View>
-              <Text style={styles.termsText}>
+              <Text style={[styles.termsText, { color: colors.textSecondary }]}>
                 I agree to the{' '}
                 <Text
-                  style={styles.termsLink}
+                  style={[styles.termsLink, { color: colors.primary }]}
                   onPress={() => navigation.navigate('TermsConditions')}
                 >
                   Terms & Conditions
                 </Text>
                 {' '}and{' '}
                 <Text
-                  style={styles.termsLink}
+                  style={[styles.termsLink, { color: colors.primary }]}
                   onPress={() => navigation.navigate('TermsConditions')}
                 >
                   Privacy Policy
@@ -326,7 +333,7 @@ export default function LoginScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
             {termsTouched && !termsValidation.isValid && (
-              <Text style={styles.termsError}>{termsValidation.error}</Text>
+              <Text style={[styles.termsError, { color: colors.error }]}>{termsValidation.error}</Text>
             )}
           </View>
 
@@ -334,6 +341,7 @@ export default function LoginScreen({ navigation }: Props) {
           <TouchableOpacity
             style={[
               styles.button,
+              { backgroundColor: colors.primary },
               (!isFormValid || isLoading) && styles.buttonDisabled,
             ]}
             onPress={handleLogin}
@@ -349,8 +357,8 @@ export default function LoginScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('SignUp')}
             style={styles.linkButton}
           >
-            <Text style={styles.linkText}>
-              Don't have an account? <Text style={styles.linkTextBold}>Sign Up</Text>
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+              Don't have an account? <Text style={[styles.linkTextBold, { color: colors.primary }]}>Sign Up</Text>
             </Text>
           </TouchableOpacity>
         </View>

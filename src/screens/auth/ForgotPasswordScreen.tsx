@@ -18,6 +18,8 @@ import {
   INDIA_COUNTRY_CODE,
 } from '@/utils/authValidation';
 import { supabaseAuthService } from '@/services/supabase/authService';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type ForgotPasswordScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -29,6 +31,9 @@ interface Props {
 }
 
 export default function ForgotPasswordScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const [identifier, setIdentifier] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -128,7 +133,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -141,26 +146,27 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={styles.content}>
           {/* Icon */}
-          <View style={styles.iconContainer}>
-            <Ionicons name="lock-closed-outline" size={48} color="#10b981" />
+          <View style={[styles.iconContainer, { backgroundColor: colors.primaryLight }]}>
+            <Ionicons name="lock-closed-outline" size={48} color={colors.primary} />
           </View>
 
-          <Text style={styles.title}>Forgot Password?</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.text }]}>Forgot Password?</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Enter the email address or mobile number associated with your account 
             and we'll send you a code to reset your password.
           </Text>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email or Mobile Number</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email or Mobile Number</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 identifierTouched && !identifierValidation.isValid && identifier.length > 0
                   ? styles.inputError
                   : identifierTouched && identifierValidation.isValid
@@ -169,22 +175,23 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
               ]}
             >
               {identifierType === 'mobile' ? (
-                <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+                <Text style={[styles.countryCode, { color: colors.text }]}>{INDIA_COUNTRY_CODE}</Text>
               ) : (
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color="#6b7280"
+                  color={colors.textMuted}
                   style={styles.inputIcon}
                 />
               )}
               <TextInput
                 style={[
                   styles.input,
+                  { color: colors.inputText },
                   identifierType === 'mobile' && styles.inputWithPrefix,
                 ]}
                 placeholder={getPlaceholder()}
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType={getKeyboardType()}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -200,24 +207,24 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
                 <Ionicons
                   name={identifierValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
                   size={20}
-                  color={identifierValidation.isValid ? '#10b981' : '#ef4444'}
+                  color={identifierValidation.isValid ? colors.success : colors.error}
                 />
               )}
             </View>
             {identifierTouched && !identifierValidation.isValid && identifier.length > 0 && (
-              <Text style={styles.validationError}>{identifierValidation.error}</Text>
+              <Text style={[styles.validationError, { color: colors.error }]}>{identifierValidation.error}</Text>
             )}
           </View>
 
           {/* Delivery Method Hint */}
           {identifierValidation.isValid && (
-            <View style={styles.hintContainer}>
+            <View style={[styles.hintContainer, { backgroundColor: colors.primaryLight }]}>
               <Ionicons 
                 name={identifierType === 'mobile' ? 'phone-portrait-outline' : 'mail-outline'} 
                 size={16} 
-                color="#10b981" 
+                color={colors.primary} 
               />
-              <Text style={styles.hintText}>
+              <Text style={[styles.hintText, { color: colors.primary }]}>
                 {identifierType === 'mobile' 
                   ? 'We will send an OTP via SMS'
                   : 'We will send an OTP to your email'}
@@ -228,8 +235,8 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           {/* Error Message */}
           {error ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={16} color="#ef4444" />
-              <Text style={styles.errorText}>{error}</Text>
+              <Ionicons name="alert-circle" size={16} color={colors.error} />
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           ) : null}
 
@@ -250,9 +257,9 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('Login')}
             style={styles.linkButton}
           >
-            <Text style={styles.linkText}>
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
               Remember your password?{' '}
-              <Text style={styles.linkTextBold}>Sign In</Text>
+              <Text style={[styles.linkTextBold, { color: colors.primary }]}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>

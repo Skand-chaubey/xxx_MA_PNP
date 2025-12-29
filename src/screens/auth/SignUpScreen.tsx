@@ -25,6 +25,8 @@ import {
 } from '@/utils/authValidation';
 import { authService } from '@/services/api/authService';
 import { useAuthStore } from '@/store';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type SignUpScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
@@ -33,6 +35,8 @@ interface Props {
 }
 
 export default function SignUpScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -182,7 +186,7 @@ export default function SignUpScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView 
@@ -191,23 +195,23 @@ export default function SignUpScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Join PowerNetPro</Text>
+          <Text style={[styles.title, { color: colors.primary }]}>Create Account</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Join PowerNetPro</Text>
 
           {/* Full Name Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Full Name</Text>
-            <View style={styles.inputWrapper}>
+            <Text style={[styles.label, { color: colors.text }]}>Full Name</Text>
+            <View style={[styles.inputWrapper, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
               <Ionicons
                 name="person-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textSecondary}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Enter your name"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 autoCapitalize="words"
                 autoCorrect={false}
                 value={name}
@@ -221,10 +225,11 @@ export default function SignUpScreen({ navigation }: Props) {
 
           {/* Email Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email Address *</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 emailTouched && !emailValidation.isValid && email.length > 0
                   ? styles.inputError
                   : emailTouched && emailValidation.isValid
@@ -235,13 +240,13 @@ export default function SignUpScreen({ navigation }: Props) {
               <Ionicons
                 name="mail-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textSecondary}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Enter your email address"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -256,21 +261,22 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={emailValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
                   size={20}
-                  color={emailValidation.isValid ? '#10b981' : '#ef4444'}
+                  color={emailValidation.isValid ? colors.success : colors.error}
                 />
               )}
             </View>
             {emailTouched && !emailValidation.isValid && email.length > 0 && (
-              <Text style={styles.errorText}>{emailValidation.error}</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{emailValidation.error}</Text>
             )}
           </View>
 
           {/* Mobile Number Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Mobile Number *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Mobile Number *</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 mobileTouched && !mobileValidation.isValid && mobileNumber.length > 0
                   ? styles.inputError
                   : mobileTouched && mobileValidation.isValid
@@ -278,11 +284,11 @@ export default function SignUpScreen({ navigation }: Props) {
                   : null,
               ]}
             >
-              <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+              <Text style={[styles.countryCode, { color: colors.text }]}>{INDIA_COUNTRY_CODE}</Text>
               <TextInput
-                style={[styles.input, styles.inputWithPrefix]}
+                style={[styles.input, styles.inputWithPrefix, { color: colors.inputText }]}
                 placeholder="Enter 10 digit mobile number"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="phone-pad"
                 maxLength={10}
                 value={mobileNumber}
@@ -293,21 +299,22 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={mobileValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
                   size={20}
-                  color={mobileValidation.isValid ? '#10b981' : '#ef4444'}
+                  color={mobileValidation.isValid ? colors.success : colors.error}
                 />
               )}
             </View>
             {mobileTouched && !mobileValidation.isValid && mobileNumber.length > 0 && (
-              <Text style={styles.errorText}>{mobileValidation.error}</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>{mobileValidation.error}</Text>
             )}
           </View>
 
           {/* Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password *</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 passwordTouched && !passwordValidation.isValid
                   ? styles.inputError
                   : passwordTouched && passwordValidation.isValid
@@ -318,13 +325,13 @@ export default function SignUpScreen({ navigation }: Props) {
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textSecondary}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Create a strong password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -343,24 +350,25 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={22}
-                  color="#6b7280"
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
             </View>
             
             {/* Password Requirements Checklist */}
-            <View style={styles.passwordRequirements}>
-              <Text style={styles.requirementsTitle}>Password must contain:</Text>
+            <View style={[styles.passwordRequirements, { backgroundColor: colors.backgroundSecondary }]}>
+              <Text style={[styles.requirementsTitle, { color: colors.textSecondary }]}>Password must contain:</Text>
               <View style={styles.requirementRow}>
                 <Ionicons
                   name={passwordValidation.hasMinLength ? 'checkmark-circle' : 'ellipse-outline'}
                   size={14}
-                  color={passwordValidation.hasMinLength ? '#10b981' : '#9ca3af'}
+                  color={passwordValidation.hasMinLength ? colors.success : colors.textMuted}
                 />
                 <Text
                   style={[
                     styles.requirementText,
-                    passwordValidation.hasMinLength && styles.requirementMet,
+                    { color: colors.textMuted },
+                    passwordValidation.hasMinLength && { color: colors.success },
                   ]}
                 >
                   At least 8 characters
@@ -370,12 +378,13 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={passwordValidation.hasUppercase ? 'checkmark-circle' : 'ellipse-outline'}
                   size={14}
-                  color={passwordValidation.hasUppercase ? '#10b981' : '#9ca3af'}
+                  color={passwordValidation.hasUppercase ? colors.success : colors.textMuted}
                 />
                 <Text
                   style={[
                     styles.requirementText,
-                    passwordValidation.hasUppercase && styles.requirementMet,
+                    { color: colors.textMuted },
+                    passwordValidation.hasUppercase && { color: colors.success },
                   ]}
                 >
                   One uppercase letter (A–Z)
@@ -385,12 +394,13 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={passwordValidation.hasLowercase ? 'checkmark-circle' : 'ellipse-outline'}
                   size={14}
-                  color={passwordValidation.hasLowercase ? '#10b981' : '#9ca3af'}
+                  color={passwordValidation.hasLowercase ? colors.success : colors.textMuted}
                 />
                 <Text
                   style={[
                     styles.requirementText,
-                    passwordValidation.hasLowercase && styles.requirementMet,
+                    { color: colors.textMuted },
+                    passwordValidation.hasLowercase && { color: colors.success },
                   ]}
                 >
                   One lowercase letter (a–z)
@@ -400,12 +410,13 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={passwordValidation.hasNumber ? 'checkmark-circle' : 'ellipse-outline'}
                   size={14}
-                  color={passwordValidation.hasNumber ? '#10b981' : '#9ca3af'}
+                  color={passwordValidation.hasNumber ? colors.success : colors.textMuted}
                 />
                 <Text
                   style={[
                     styles.requirementText,
-                    passwordValidation.hasNumber && styles.requirementMet,
+                    { color: colors.textMuted },
+                    passwordValidation.hasNumber && { color: colors.success },
                   ]}
                 >
                   One number (0–9)
@@ -415,12 +426,13 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={passwordValidation.hasSpecialChar ? 'checkmark-circle' : 'ellipse-outline'}
                   size={14}
-                  color={passwordValidation.hasSpecialChar ? '#10b981' : '#9ca3af'}
+                  color={passwordValidation.hasSpecialChar ? colors.success : colors.textMuted}
                 />
                 <Text
                   style={[
                     styles.requirementText,
-                    passwordValidation.hasSpecialChar && styles.requirementMet,
+                    { color: colors.textMuted },
+                    passwordValidation.hasSpecialChar && { color: colors.success },
                   ]}
                 >
                   One special character (!@#$%^&*)
@@ -431,10 +443,11 @@ export default function SignUpScreen({ navigation }: Props) {
 
           {/* Confirm Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm Password *</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Confirm Password *</Text>
             <View
               style={[
                 styles.inputWrapper,
+                { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder },
                 confirmPasswordTouched && !doPasswordsMatch && confirmPassword.length > 0
                   ? styles.inputError
                   : confirmPasswordTouched && doPasswordsMatch && confirmPassword.length > 0
@@ -445,13 +458,13 @@ export default function SignUpScreen({ navigation }: Props) {
               <Ionicons
                 name="lock-closed-outline"
                 size={20}
-                color="#6b7280"
+                color={colors.textSecondary}
                 style={styles.inputIcon}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, { color: colors.inputText }]}
                 placeholder="Confirm your password"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -470,27 +483,27 @@ export default function SignUpScreen({ navigation }: Props) {
                 <Ionicons
                   name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                   size={22}
-                  color="#6b7280"
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
             </View>
             {/* Confirm Password Error/Success */}
             {confirmPasswordTouched && confirmPassword.length > 0 && !doPasswordsMatch && (
-              <Text style={styles.errorText}>Passwords do not match</Text>
+              <Text style={[styles.errorText, { color: colors.error }]}>Passwords do not match</Text>
             )}
             {confirmPasswordTouched && confirmPassword.length > 0 && doPasswordsMatch && (
               <View style={styles.matchRow}>
-                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-                <Text style={styles.matchText}>Passwords match</Text>
+                <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                <Text style={[styles.matchText, { color: colors.success }]}>Passwords match</Text>
               </View>
             )}
           </View>
 
           {/* Server Error */}
           {serverError ? (
-            <View style={styles.serverErrorContainer}>
-              <Ionicons name="alert-circle" size={16} color="#ef4444" />
-              <Text style={styles.serverErrorText}>{serverError}</Text>
+            <View style={[styles.serverErrorContainer, { backgroundColor: colors.errorBackground }]}>
+              <Ionicons name="alert-circle" size={16} color={colors.error} />
+              <Text style={[styles.serverErrorText, { color: colors.error }]}>{serverError}</Text>
             </View>
           ) : null}
 
@@ -504,22 +517,22 @@ export default function SignUpScreen({ navigation }: Props) {
               }}
               activeOpacity={0.7}
             >
-              <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+              <View style={[styles.checkbox, { borderColor: colors.inputBorder }, termsAccepted && styles.checkboxChecked]}>
                 {termsAccepted && (
                   <Ionicons name="checkmark" size={14} color="#ffffff" />
                 )}
               </View>
-              <Text style={styles.termsText}>
+              <Text style={[styles.termsText, { color: colors.textSecondary }]}>
                 I agree to the{' '}
                 <Text
-                  style={styles.termsLink}
+                  style={[styles.termsLink, { color: colors.primary }]}
                   onPress={() => navigation.navigate('TermsConditions')}
                 >
                   Terms & Conditions
                 </Text>
                 {' '}and{' '}
                 <Text
-                  style={styles.termsLink}
+                  style={[styles.termsLink, { color: colors.primary }]}
                   onPress={() => navigation.navigate('TermsConditions')}
                 >
                   Privacy Policy
@@ -527,7 +540,7 @@ export default function SignUpScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
             {termsTouched && !termsValidation.isValid && (
-              <Text style={styles.termsError}>{termsValidation.error}</Text>
+              <Text style={[styles.termsError, { color: colors.error }]}>{termsValidation.error}</Text>
             )}
           </View>
 
@@ -535,6 +548,7 @@ export default function SignUpScreen({ navigation }: Props) {
           <TouchableOpacity
             style={[
               styles.button,
+              { backgroundColor: colors.primary },
               (!isFormValid || isLoading) && styles.buttonDisabled,
             ]}
             onPress={handleSignUp}
@@ -550,8 +564,8 @@ export default function SignUpScreen({ navigation }: Props) {
             onPress={() => navigation.goBack()}
             style={styles.linkButton}
           >
-            <Text style={styles.linkText}>
-              Already have an account? <Text style={styles.linkTextBold}>Sign In</Text>
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+              Already have an account? <Text style={[styles.linkTextBold, { color: colors.primary }]}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>

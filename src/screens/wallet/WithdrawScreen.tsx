@@ -17,6 +17,8 @@ import { RootStackParamList } from '@/types';
 import { useWalletStore } from '@/store';
 import { formatCurrency } from '@/utils/helpers';
 import { paymentService } from '@/services/payments/paymentService';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type WithdrawScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -27,6 +29,9 @@ interface Props {
 const QUICK_AMOUNTS = [500, 1000, 2000, 5000, 10000];
 
 export default function WithdrawScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const { wallet } = useWalletStore();
   const [amount, setAmount] = useState('');
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
@@ -117,7 +122,7 @@ export default function WithdrawScreen({ navigation }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <LinearGradient
         colors={['#10b981', '#059669']}
         style={styles.gradientHeader}
@@ -151,7 +156,7 @@ export default function WithdrawScreen({ navigation }: Props) {
 
           {/* Quick Amounts */}
           <View style={styles.quickAmounts}>
-            <Text style={styles.sectionTitle}>Quick Amounts</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Amounts</Text>
             <View style={styles.quickAmountsGrid}>
               {QUICK_AMOUNTS.map((quickAmount) => {
                 const isDisabled = quickAmount > availableBalance;
@@ -160,6 +165,7 @@ export default function WithdrawScreen({ navigation }: Props) {
                     key={quickAmount}
                     style={[
                       styles.quickAmountButton,
+                      { backgroundColor: colors.card, borderColor: colors.border },
                       selectedAmount === quickAmount && styles.quickAmountButtonActive,
                       isDisabled && styles.quickAmountButtonDisabled,
                     ]}
@@ -169,6 +175,7 @@ export default function WithdrawScreen({ navigation }: Props) {
                     <Text
                       style={[
                         styles.quickAmountText,
+                        { color: colors.text },
                         selectedAmount === quickAmount && styles.quickAmountTextActive,
                         isDisabled && styles.quickAmountTextDisabled,
                       ]}
@@ -183,12 +190,13 @@ export default function WithdrawScreen({ navigation }: Props) {
 
           {/* Amount Input */}
           <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>Withdrawal Amount</Text>
-            <View style={styles.amountInputContainer}>
-              <Text style={styles.currencySymbol}>₹</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Withdrawal Amount</Text>
+            <View style={[styles.amountInputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+              <Text style={[styles.currencySymbol, { color: colors.text }]}>₹</Text>
               <TextInput
-                style={styles.amountInput}
+                style={[styles.amountInput, { color: colors.inputText }]}
                 placeholder="0.00"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="decimal-pad"
                 value={amount}
                 onChangeText={(text) => {
@@ -197,18 +205,19 @@ export default function WithdrawScreen({ navigation }: Props) {
                 }}
               />
             </View>
-            <Text style={styles.hint}>Minimum withdrawal: ₹100</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Minimum withdrawal: ₹100</Text>
           </View>
 
           {/* Bank Details */}
           <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>Bank Account Details</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Bank Account Details</Text>
             
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Account Holder Name</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Account Holder Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
                 placeholder="Enter account holder name"
+                placeholderTextColor={colors.inputPlaceholder}
                 value={accountHolderName}
                 onChangeText={setAccountHolderName}
                 autoCapitalize="words"
@@ -216,10 +225,11 @@ export default function WithdrawScreen({ navigation }: Props) {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Account Number</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Account Number</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
                 placeholder="Enter account number"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="numeric"
                 value={accountNumber}
                 onChangeText={setAccountNumber}
@@ -228,10 +238,11 @@ export default function WithdrawScreen({ navigation }: Props) {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>IFSC Code</Text>
+              <Text style={[styles.label, { color: colors.text }]}>IFSC Code</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
                 placeholder="Enter IFSC code"
+                placeholderTextColor={colors.inputPlaceholder}
                 value={ifscCode}
                 onChangeText={(text) => setIfscCode(text.toUpperCase())}
                 autoCapitalize="characters"
@@ -241,29 +252,29 @@ export default function WithdrawScreen({ navigation }: Props) {
           </View>
 
           {/* Summary */}
-          <View style={styles.summary}>
+          <View style={[styles.summary, { backgroundColor: colors.card }]}>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Withdrawal Amount</Text>
-              <Text style={styles.summaryValue}>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Withdrawal Amount</Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
                 {amount ? formatCurrency(parseFloat(amount) || 0) : formatCurrency(0)}
               </Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Processing Fee</Text>
-              <Text style={styles.summaryValue}>Free</Text>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Processing Fee</Text>
+              <Text style={[styles.summaryValue, { color: colors.success }]}>Free</Text>
             </View>
-            <View style={[styles.summaryRow, styles.summaryTotal]}>
-              <Text style={styles.summaryTotalLabel}>You will receive</Text>
-              <Text style={styles.summaryTotalValue}>
+            <View style={[styles.summaryRow, styles.summaryTotal, { borderTopColor: colors.border }]}>
+              <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>You will receive</Text>
+              <Text style={[styles.summaryTotalValue, { color: colors.primary }]}>
                 {amount ? formatCurrency(parseFloat(amount) || 0) : formatCurrency(0)}
               </Text>
             </View>
           </View>
 
           {/* Info Note */}
-          <View style={styles.infoNote}>
+          <View style={[styles.infoNote, { backgroundColor: isDark ? '#1e3a5f' : '#eff6ff' }]}>
             <Ionicons name="information-circle" size={20} color="#3b82f6" />
-            <Text style={styles.infoText}>
+            <Text style={[styles.infoText, { color: isDark ? '#93c5fd' : '#1e40af' }]}>
               Withdrawals are processed within 2-3 business days. Please ensure your bank details are correct.
             </Text>
           </View>

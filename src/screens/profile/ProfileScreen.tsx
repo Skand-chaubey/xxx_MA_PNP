@@ -21,6 +21,8 @@ import { useAuthStore, useMeterStore, useKYCStore, useThemeStore } from '@/store
 import type { ThemeMode } from '@/store';
 import { supabaseStorageService } from '@/services/supabase/storageService';
 import { supabaseAuthService } from '@/services/supabase/authService';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 
@@ -68,6 +70,8 @@ const KYC_STATUS_CONFIG = {
 };
 
 export default function ProfileScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
   const { logout, user, setUser } = useAuthStore();
   const { currentMeter, removeMeter } = useMeterStore();
   const { status: kycStatus } = useKYCStore();
@@ -277,7 +281,7 @@ export default function ProfileScreen({ navigation }: Props) {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <LinearGradient
         colors={['#10b981', '#059669']}
         style={styles.gradientHeader}
@@ -295,7 +299,7 @@ export default function ProfileScreen({ navigation }: Props) {
         <View style={styles.content}>
           {/* User Info Card */}
           {user && (
-            <View style={styles.userCard}>
+            <View style={[styles.userCard, { backgroundColor: colors.card }]}>
               <TouchableOpacity
                 style={styles.userAvatarContainer}
                 onPress={handlePickImage}
@@ -309,13 +313,13 @@ export default function ProfileScreen({ navigation }: Props) {
                     resizeMode="cover"
                   />
                 ) : (
-                  <View style={styles.userAvatar}>
-                    <MaterialCommunityIcons name="account" size={48} color="#10b981" />
+                  <View style={[styles.userAvatar, { backgroundColor: colors.primaryLight }]}>
+                    <MaterialCommunityIcons name="account" size={48} color={colors.primary} />
                   </View>
                 )}
                 {isUploadingImage ? (
                   <View style={styles.uploadingOverlay}>
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   </View>
                 ) : (
                   <View style={styles.cameraIconOverlay}>
@@ -324,17 +328,17 @@ export default function ProfileScreen({ navigation }: Props) {
                 )}
               </TouchableOpacity>
               <View style={styles.userInfo}>
-                <Text style={styles.userName} numberOfLines={1}>
+                <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
                   {user.name?.trim() || 'User'}
                 </Text>
                 <View style={styles.userDetailRow}>
-                  <Ionicons name="mail" size={16} color="#6b7280" />
-                  <Text style={styles.userDetail}>{user.email}</Text>
+                  <Ionicons name="mail" size={16} color={colors.textSecondary} />
+                  <Text style={[styles.userDetail, { color: colors.textSecondary }]}>{user.email}</Text>
                 </View>
                 {user.phoneNumber && (
                   <View style={styles.userDetailRow}>
-                    <Ionicons name="call" size={16} color="#6b7280" />
-                    <Text style={styles.userDetail}>{user.phoneNumber}</Text>
+                    <Ionicons name="call" size={16} color={colors.textSecondary} />
+                    <Text style={[styles.userDetail, { color: colors.textSecondary }]}>{user.phoneNumber}</Text>
                   </View>
                 )}
               </View>
@@ -343,17 +347,17 @@ export default function ProfileScreen({ navigation }: Props) {
 
           {/* KYC Status Card */}
           <TouchableOpacity
-            style={styles.kycCard}
+            style={[styles.kycCard, { backgroundColor: colors.card }]}
             onPress={() => navigation.navigate('KYC')}
             activeOpacity={0.7}
           >
             <View style={styles.kycHeader}>
-              <View style={styles.kycIconContainer}>
-                <MaterialCommunityIcons name="shield-check" size={24} color="#10b981" />
+              <View style={[styles.kycIconContainer, { backgroundColor: colors.primaryLight }]}>
+                <MaterialCommunityIcons name="shield-check" size={24} color={colors.primary} />
               </View>
               <View style={styles.kycInfo}>
                 <View style={styles.kycTitleRow}>
-                  <Text style={styles.kycTitle}>KYC Verification</Text>
+                  <Text style={[styles.kycTitle, { color: colors.text }]}>KYC Verification</Text>
                   <View style={[styles.kycBadge, { backgroundColor: kycConfig.badgeBg }]}>
                     <Ionicons name={kycConfig.icon as any} size={12} color={kycConfig.badgeColor} />
                     <Text style={[styles.kycBadgeText, { color: kycConfig.badgeColor }]}>
@@ -361,23 +365,23 @@ export default function ProfileScreen({ navigation }: Props) {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.kycDescription}>{kycConfig.description}</Text>
+                <Text style={[styles.kycDescription, { color: colors.textSecondary }]}>{kycConfig.description}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
             </View>
           </TouchableOpacity>
 
           {/* Current Meter Info */}
           {currentMeter && (
-            <View style={styles.meterCard}>
+            <View style={[styles.meterCard, { backgroundColor: colors.card }]}>
               <View style={styles.meterHeader}>
-                <View style={styles.meterIconContainer}>
-                  <MaterialCommunityIcons name="meter-electric" size={24} color="#10b981" />
+                <View style={[styles.meterIconContainer, { backgroundColor: colors.primaryLight }]}>
+                  <MaterialCommunityIcons name="meter-electric" size={24} color={colors.primary} />
                 </View>
                 <View style={styles.meterInfo}>
-                  <Text style={styles.meterTitle}>Linked Meter</Text>
-                  <Text style={styles.meterSerial}>{currentMeter.meterSerialId}</Text>
-                  <Text style={styles.meterDiscom}>{currentMeter.discomName}</Text>
+                  <Text style={[styles.meterTitle, { color: colors.text }]}>Linked Meter</Text>
+                  <Text style={[styles.meterSerial, { color: colors.textSecondary }]}>{currentMeter.meterSerialId}</Text>
+                  <Text style={[styles.meterDiscom, { color: colors.textMuted }]}>{currentMeter.discomName}</Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -393,38 +397,38 @@ export default function ProfileScreen({ navigation }: Props) {
 
           {/* Menu Items */}
           <View style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>Settings</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Settings</Text>
             {menuItems.map((item) => (
               <TouchableOpacity
                 key={item.id}
-                style={styles.menuItem}
+                style={[styles.menuItem, { backgroundColor: colors.card }]}
                 onPress={item.onPress}
                 activeOpacity={0.7}
               >
-                <View style={styles.menuIconContainer}>
+                <View style={[styles.menuIconContainer, { backgroundColor: colors.primaryLight }]}>
                   {item.icon}
                 </View>
                 <View style={styles.menuContent}>
-                  <Text style={styles.menuItemText}>{item.title}</Text>
-                  <Text style={styles.menuItemSubtext}>{item.subtitle}</Text>
+                  <Text style={[styles.menuItemText, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>{item.subtitle}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Account Info Section */}
           <View style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>Account</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
             
             {/* App Version */}
-            <View style={styles.infoItem}>
-              <View style={styles.menuIconContainer}>
-                <Ionicons name="information-circle" size={24} color="#10b981" />
+            <View style={[styles.infoItem, { backgroundColor: colors.card }]}>
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.primaryLight }]}>
+                <Ionicons name="information-circle" size={24} color={colors.primary} />
               </View>
               <View style={styles.menuContent}>
-                <Text style={styles.menuItemText}>App Version</Text>
-                <Text style={styles.menuItemSubtext}>v{getAppVersion()}</Text>
+                <Text style={[styles.menuItemText, { color: colors.text }]}>App Version</Text>
+                <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>v{getAppVersion()}</Text>
               </View>
             </View>
           </View>
@@ -458,38 +462,41 @@ export default function ProfileScreen({ navigation }: Props) {
           activeOpacity={1}
           onPress={() => setShowThemeModal(false)}
         >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Theme Preference</Text>
-            <Text style={styles.modalSubtitle}>Choose your preferred appearance</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.modalBackground }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Theme Preference</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Choose your preferred appearance</Text>
             
             {THEME_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.value}
                 style={[
                   styles.themeOption,
-                  themeMode === option.value && styles.themeOptionActive,
+                  { backgroundColor: colors.backgroundSecondary },
+                  themeMode === option.value && [styles.themeOptionActive, { borderColor: colors.primary }],
                 ]}
                 onPress={() => handleThemeChange(option.value)}
                 activeOpacity={0.7}
               >
                 <View style={[
                   styles.themeIconContainer,
-                  themeMode === option.value && styles.themeIconContainerActive,
+                  { backgroundColor: colors.primaryLight },
+                  themeMode === option.value && [styles.themeIconContainerActive, { backgroundColor: colors.primary }],
                 ]}>
                   <Ionicons
                     name={option.icon as any}
                     size={24}
-                    color={themeMode === option.value ? '#ffffff' : '#10b981'}
+                    color={themeMode === option.value ? '#ffffff' : colors.primary}
                   />
                 </View>
                 <Text style={[
                   styles.themeOptionText,
+                  { color: colors.text },
                   themeMode === option.value && styles.themeOptionTextActive,
                 ]}>
                   {option.label}
                 </Text>
                 {themeMode === option.value && (
-                  <Ionicons name="checkmark-circle" size={24} color="#10b981" />
+                  <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
                 )}
               </TouchableOpacity>
             ))}
@@ -498,7 +505,7 @@ export default function ProfileScreen({ navigation }: Props) {
               style={styles.modalCloseButton}
               onPress={() => setShowThemeModal(false)}
             >
-              <Text style={styles.modalCloseText}>Cancel</Text>
+              <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

@@ -18,6 +18,8 @@ import { RootStackParamList } from '@/types';
 import { formatCurrency } from '@/utils/helpers';
 import { paymentService } from '@/services/payments/paymentService';
 import { RazorpayCheckout } from '@/components/payments/RazorpayCheckout';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type TopUpScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -28,6 +30,9 @@ interface Props {
 const QUICK_AMOUNTS = [100, 500, 1000, 2000, 5000];
 
 export default function TopUpScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const [amount, setAmount] = useState('');
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -146,31 +151,32 @@ export default function TopUpScreen({ navigation }: Props) {
 
   return (
     <>
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Back Button */}
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="arrow-back" size={24} color="#374151" />
+        <Ionicons name="arrow-back" size={24} color={colors.text} />
       </TouchableOpacity>
 
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
-          <Text style={styles.title}>Top Up Wallet</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.text }]}>Top Up Wallet</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Add money to your wallet to buy energy
           </Text>
 
           <View style={styles.quickAmounts}>
-            <Text style={styles.quickAmountsLabel}>Quick Amounts</Text>
+            <Text style={[styles.quickAmountsLabel, { color: colors.text }]}>Quick Amounts</Text>
             <View style={styles.quickAmountsGrid}>
               {QUICK_AMOUNTS.map((quickAmount) => (
                 <TouchableOpacity
                   key={quickAmount}
                   style={[
                     styles.quickAmountButton,
+                    { backgroundColor: colors.card, borderColor: colors.border },
                     selectedAmount === quickAmount && styles.quickAmountButtonActive,
                   ]}
                   onPress={() => handleQuickAmount(quickAmount)}
@@ -178,6 +184,7 @@ export default function TopUpScreen({ navigation }: Props) {
                   <Text
                     style={[
                       styles.quickAmountText,
+                      { color: colors.text },
                       selectedAmount === quickAmount && styles.quickAmountTextActive,
                     ]}
                   >
@@ -189,12 +196,13 @@ export default function TopUpScreen({ navigation }: Props) {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Enter Amount</Text>
-            <View style={styles.amountInputContainer}>
-              <Text style={styles.currencySymbol}>₹</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Enter Amount</Text>
+            <View style={[styles.amountInputContainer, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+              <Text style={[styles.currencySymbol, { color: colors.text }]}>₹</Text>
               <TextInput
-                style={styles.amountInput}
+                style={[styles.amountInput, { color: colors.inputText }]}
                 placeholder="0.00"
+                placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="decimal-pad"
                 value={amount}
                 onChangeText={(text) => {
@@ -203,23 +211,23 @@ export default function TopUpScreen({ navigation }: Props) {
                 }}
               />
             </View>
-            <Text style={styles.hint}>Minimum amount: ₹10</Text>
+            <Text style={[styles.hint, { color: colors.textMuted }]}>Minimum amount: ₹10</Text>
           </View>
 
-          <View style={styles.summary}>
+          <View style={[styles.summary, { backgroundColor: colors.card }]}>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Amount</Text>
-              <Text style={styles.summaryValue}>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Amount</Text>
+              <Text style={[styles.summaryValue, { color: colors.text }]}>
                 {amount ? formatCurrency(parseFloat(amount) || 0) : formatCurrency(0)}
               </Text>
             </View>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Processing Fee</Text>
-              <Text style={styles.summaryValue}>Free</Text>
+              <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Processing Fee</Text>
+              <Text style={[styles.summaryValue, { color: colors.success }]}>Free</Text>
             </View>
-            <View style={[styles.summaryRow, styles.summaryTotal]}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
+            <View style={[styles.summaryRow, styles.summaryTotal, { borderTopColor: colors.border }]}>
+              <Text style={[styles.summaryTotalLabel, { color: colors.text }]}>Total</Text>
+              <Text style={[styles.summaryTotalValue, { color: colors.primary }]}>
                 {amount ? formatCurrency(parseFloat(amount) || 0) : formatCurrency(0)}
               </Text>
             </View>

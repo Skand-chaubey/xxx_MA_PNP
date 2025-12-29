@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type OnboardingScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -14,6 +16,9 @@ interface Props {
 }
 
 export default function OnboardingScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const handleHasMeter = () => {
     navigation.navigate('MeterRegistration');
   };
@@ -25,19 +30,19 @@ export default function OnboardingScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Back Button */}
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => navigation.goBack()}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Ionicons name="arrow-back" size={24} color="#374151" />
+        <Ionicons name="arrow-back" size={24} color={colors.text} />
       </TouchableOpacity>
 
       <View style={styles.content}>
-        <Text style={styles.title}>Let's connect your energy source</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Let's connect your energy source</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Do you have a Smart Meter installed at your location?
         </Text>
 
@@ -46,10 +51,10 @@ export default function OnboardingScreen({ navigation }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.button, styles.buttonSecondary]}
+          style={[styles.button, styles.buttonSecondary, { borderColor: colors.primary }]}
           onPress={handleNoMeter}
         >
-          <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
+          <Text style={[styles.buttonText, styles.buttonTextSecondary, { color: colors.primary }]}>
             No, Request Installation
           </Text>
         </TouchableOpacity>

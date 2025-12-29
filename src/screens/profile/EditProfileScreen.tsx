@@ -23,6 +23,8 @@ import { useAuthStore, useProfileStore } from '@/store';
 import { supabaseStorageService } from '@/services/supabase/storageService';
 import { supabaseAuthService } from '@/services/supabase/authService';
 import { UserLocation } from '@/store/profileStore';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type EditProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditProfile'>;
 
@@ -44,6 +46,8 @@ const INDIAN_STATES = [
 ];
 
 export default function EditProfileScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
   const { user, setUser } = useAuthStore();
   const { draft, hasChanges, isSaving, setDraft, updateDraft, clearDraft, saveLocation, restoreLocation } = useProfileStore();
   
@@ -306,7 +310,7 @@ export default function EditProfileScreen({ navigation }: Props) {
   const canSave = checkChanges() && !isSaving && !isUploadingImage;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <LinearGradient
         colors={['#10b981', '#059669']}
         style={styles.gradientHeader}
@@ -352,13 +356,13 @@ export default function EditProfileScreen({ navigation }: Props) {
                     resizeMode="cover"
                   />
                 ) : (
-                  <View style={styles.avatarPlaceholder}>
-                    <MaterialCommunityIcons name="account" size={48} color="#10b981" />
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primaryLight }]}>
+                    <MaterialCommunityIcons name="account" size={48} color={colors.primary} />
                   </View>
                 )}
                 {isUploadingImage ? (
                   <View style={styles.uploadingOverlay}>
-                    <ActivityIndicator size="small" color="#10b981" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   </View>
                 ) : (
                   <View style={styles.cameraIconOverlay}>
@@ -366,82 +370,84 @@ export default function EditProfileScreen({ navigation }: Props) {
                   </View>
                 )}
               </TouchableOpacity>
-              <Text style={styles.changePhotoText}>Tap to change photo</Text>
+              <Text style={[styles.changePhotoText, { color: colors.textSecondary }]}>Tap to change photo</Text>
             </View>
 
             {/* Personal Information Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Personal Information</Text>
+            <View style={[styles.section, { backgroundColor: colors.card }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Personal Information</Text>
               
               {/* Full Name */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Full Name</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Full Name</Text>
                 <TextInput
-                  style={[styles.input, errors.name && styles.inputError]}
+                  style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }, errors.name && styles.inputError]}
                   value={name}
                   onChangeText={setName}
                   placeholder="Enter your full name"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.inputPlaceholder}
                   autoCapitalize="words"
                 />
-                {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                {errors.name && <Text style={[styles.errorText, { color: colors.error }]}>{errors.name}</Text>}
               </View>
 
               {/* Email - Read-only after signup */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email Address</Text>
-                <View style={styles.readOnlyInput}>
-                  <Text style={styles.readOnlyText}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Email Address</Text>
+                <View style={[styles.readOnlyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                  <Text style={[styles.readOnlyText, { color: colors.textSecondary }]}>
                     {email || 'Not provided'}
                   </Text>
-                  <Ionicons name="lock-closed" size={16} color="#9ca3af" />
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
                 </View>
-                <Text style={styles.hintText}>
+                <Text style={[styles.hintText, { color: colors.textMuted }]}>
                   Email cannot be changed after signup
                 </Text>
               </View>
 
               {/* Phone Number (Read-only) */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone Number</Text>
-                <View style={styles.readOnlyInput}>
-                  <Text style={styles.readOnlyText}>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Phone Number</Text>
+                <View style={[styles.readOnlyInput, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                  <Text style={[styles.readOnlyText, { color: colors.textSecondary }]}>
                     {phoneNumber || 'Not provided'}
                   </Text>
-                  <Ionicons name="lock-closed" size={16} color="#9ca3af" />
+                  <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
                 </View>
-                <Text style={styles.hintText}>
+                <Text style={[styles.hintText, { color: colors.textMuted }]}>
                   Change requires verification. Contact support.
                 </Text>
               </View>
             </View>
 
             {/* Location Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Location</Text>
+            <View style={[styles.section, { backgroundColor: colors.card }]}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Location</Text>
               
               {/* Location Type Toggle */}
               <View style={styles.locationToggle}>
                 <TouchableOpacity
                   style={[
                     styles.locationOption,
+                    { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
                     locationType === 'gps' && styles.locationOptionActive,
                   ]}
                   onPress={handleGetCurrentLocation}
                   disabled={isLoadingLocation}
                 >
                   {isLoadingLocation ? (
-                    <ActivityIndicator size="small" color={locationType === 'gps' ? '#ffffff' : '#10b981'} />
+                    <ActivityIndicator size="small" color={locationType === 'gps' ? '#ffffff' : colors.primary} />
                   ) : (
                     <Ionicons
                       name="location"
                       size={20}
-                      color={locationType === 'gps' ? '#ffffff' : '#10b981'}
+                      color={locationType === 'gps' ? '#ffffff' : colors.primary}
                     />
                   )}
                   <Text
                     style={[
                       styles.locationOptionText,
+                      { color: colors.text },
                       locationType === 'gps' && styles.locationOptionTextActive,
                     ]}
                   >
@@ -452,6 +458,7 @@ export default function EditProfileScreen({ navigation }: Props) {
                 <TouchableOpacity
                   style={[
                     styles.locationOption,
+                    { backgroundColor: colors.backgroundSecondary, borderColor: colors.border },
                     locationType === 'manual' && styles.locationOptionActive,
                   ]}
                   onPress={() => setLocationType('manual')}
@@ -459,11 +466,12 @@ export default function EditProfileScreen({ navigation }: Props) {
                   <Ionicons
                     name="create-outline"
                     size={20}
-                    color={locationType === 'manual' ? '#ffffff' : '#10b981'}
+                    color={locationType === 'manual' ? '#ffffff' : colors.primary}
                   />
                   <Text
                     style={[
                       styles.locationOptionText,
+                      { color: colors.text },
                       locationType === 'manual' && styles.locationOptionTextActive,
                     ]}
                   >
@@ -474,42 +482,42 @@ export default function EditProfileScreen({ navigation }: Props) {
 
               {/* Location Fields */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>City</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>City</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
                   value={city}
                   onChangeText={setCity}
                   placeholder="Enter city"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.inputPlaceholder}
                   editable={locationType === 'manual'}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>State</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>State</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
                   value={state}
                   onChangeText={setState}
                   placeholder="Enter state"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.inputPlaceholder}
                   editable={locationType === 'manual'}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Pincode</Text>
+                <Text style={[styles.inputLabel, { color: colors.text }]}>Pincode</Text>
                 <TextInput
-                  style={[styles.input, errors.pincode && styles.inputError]}
+                  style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }, errors.pincode && styles.inputError]}
                   value={pincode}
                   onChangeText={setPincode}
                   placeholder="Enter 6-digit pincode"
-                  placeholderTextColor="#9ca3af"
+                  placeholderTextColor={colors.inputPlaceholder}
                   keyboardType="number-pad"
                   maxLength={6}
                   editable={locationType === 'manual'}
                 />
-                {errors.pincode && <Text style={styles.errorText}>{errors.pincode}</Text>}
+                {errors.pincode && <Text style={[styles.errorText, { color: colors.error }]}>{errors.pincode}</Text>}
               </View>
             </View>
 

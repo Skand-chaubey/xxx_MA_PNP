@@ -15,6 +15,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { useMeterStore, useTradingStore, useWalletStore, useAuthStore } from '@/store';
 import { formatEnergy, formatCurrency, calculateCarbonSaved } from '@/utils/helpers';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 const { width } = Dimensions.get('window');
 
@@ -89,6 +91,8 @@ interface Props {
 }
 
 export default function HomeScreen({ navigation }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
   const { currentMeter, energyData } = useMeterStore();
   const { activeOrders } = useTradingStore();
   const { wallet } = useWalletStore();
@@ -231,7 +235,7 @@ export default function HomeScreen({ navigation }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <LinearGradient
         colors={['#10b981', '#059669', '#047857']}
         style={styles.gradientHeader}
@@ -249,14 +253,14 @@ export default function HomeScreen({ navigation }: Props) {
       </LinearGradient>
 
       {/* Live Market Price Ticker */}
-      <View style={styles.tickerContainer}>
+      <View style={[styles.tickerContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.tickerContent}>
-          <Ionicons name="pulse" size={16} color="#10b981" />
-          <Text style={styles.tickerLabel}>Current Sell Price:</Text>
-          <Text style={styles.tickerPrice}>₹{currentPrice.toFixed(2)}/unit</Text>
-          <View style={styles.tickerChange}>
-            <Ionicons name="arrow-up" size={12} color="#10b981" />
-            <Text style={styles.tickerChangeText}>+0.25</Text>
+          <Ionicons name="pulse" size={16} color={colors.primary} />
+          <Text style={[styles.tickerLabel, { color: colors.textSecondary }]}>Current Sell Price:</Text>
+          <Text style={[styles.tickerPrice, { color: colors.text }]}>₹{currentPrice.toFixed(2)}/unit</Text>
+          <View style={[styles.tickerChange, { backgroundColor: colors.successBackground }]}>
+            <Ionicons name="arrow-up" size={12} color={colors.success} />
+            <Text style={[styles.tickerChangeText, { color: colors.success }]}>+0.25</Text>
           </View>
         </View>
       </View>
@@ -284,64 +288,64 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
 
           {/* Current Generation */}
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <View style={styles.statCardContent}>
-              <MaterialCommunityIcons name="lightning-bolt" size={24} color="#10b981" />
-              <Text style={styles.statCardLabelSmall}>Current</Text>
-              <Text style={styles.statCardValueSmall}>{formatEnergy(currentGeneration, 'kW')}</Text>
-              <Text style={styles.statCardUnitSmall}>Real-time Power</Text>
+              <MaterialCommunityIcons name="lightning-bolt" size={24} color={colors.primary} />
+              <Text style={[styles.statCardLabelSmall, { color: colors.textSecondary }]}>Current</Text>
+              <Text style={[styles.statCardValueSmall, { color: colors.text }]}>{formatEnergy(currentGeneration, 'kW')}</Text>
+              <Text style={[styles.statCardUnitSmall, { color: colors.textMuted }]}>Real-time Power</Text>
             </View>
           </View>
 
           {/* Carbon Saved */}
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <View style={styles.statCardContent}>
-              <MaterialCommunityIcons name="leaf" size={24} color="#10b981" />
-              <Text style={styles.statCardLabelSmall}>Carbon Saved</Text>
-              <Text style={styles.statCardValueSmall}>{carbonSaved.toFixed(1)} kg</Text>
-              <Text style={styles.statCardUnitSmall}>CO₂ Today</Text>
+              <MaterialCommunityIcons name="leaf" size={24} color={colors.primary} />
+              <Text style={[styles.statCardLabelSmall, { color: colors.textSecondary }]}>Carbon Saved</Text>
+              <Text style={[styles.statCardValueSmall, { color: colors.text }]}>{carbonSaved.toFixed(1)} kg</Text>
+              <Text style={[styles.statCardUnitSmall, { color: colors.textMuted }]}>CO₂ Today</Text>
             </View>
           </View>
         </View>
 
         {/* Wallet Balance */}
         {wallet && (
-          <View style={styles.walletCard}>
+          <View style={[styles.walletCard, { backgroundColor: colors.card }]}>
             <View style={styles.walletHeader}>
               <View style={styles.walletHeaderLeft}>
-                <MaterialCommunityIcons name="wallet" size={24} color="#10b981" />
-                <Text style={styles.walletTitle}>Wallet Balance</Text>
+                <MaterialCommunityIcons name="wallet" size={24} color={colors.primary} />
+                <Text style={[styles.walletTitle, { color: colors.text }]}>Wallet Balance</Text>
               </View>
               <TouchableOpacity onPress={() => navigation.navigate('Wallet')}>
-                <Text style={styles.walletLink}>View Details</Text>
+                <Text style={[styles.walletLink, { color: colors.primary }]}>View Details</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.walletBalances}>
               <View style={styles.walletBalanceItem}>
                 <LinearGradient
-                  colors={['#ecfdf5', '#d1fae5']}
+                  colors={isDark ? ['#064e3b', '#065f46'] : ['#ecfdf5', '#d1fae5']}
                   style={styles.walletBalanceIcon}
                 >
-                  <MaterialCommunityIcons name="lightning-bolt" size={24} color="#10b981" />
+                  <MaterialCommunityIcons name="lightning-bolt" size={24} color={colors.primary} />
                 </LinearGradient>
                 <View style={styles.walletBalanceInfo}>
-                  <Text style={styles.walletBalanceLabel}>Energy</Text>
-                  <Text style={styles.walletBalanceValue}>
+                  <Text style={[styles.walletBalanceLabel, { color: colors.textSecondary }]}>Energy</Text>
+                  <Text style={[styles.walletBalanceValue, { color: colors.text }]}>
                     {formatEnergy(wallet.energyBalance, 'kWh')}
                   </Text>
                 </View>
               </View>
-              <View style={styles.walletDivider} />
+              <View style={[styles.walletDivider, { backgroundColor: colors.border }]} />
               <View style={styles.walletBalanceItem}>
                 <LinearGradient
-                  colors={['#fef3c7', '#fde68a']}
+                  colors={isDark ? ['#451a03', '#78350f'] : ['#fef3c7', '#fde68a']}
                   style={styles.walletBalanceIcon}
                 >
                   <MaterialCommunityIcons name="currency-inr" size={24} color="#f59e0b" />
                 </LinearGradient>
                 <View style={styles.walletBalanceInfo}>
-                  <Text style={styles.walletBalanceLabel}>Cash</Text>
-                  <Text style={styles.walletBalanceValue}>
+                  <Text style={[styles.walletBalanceLabel, { color: colors.textSecondary }]}>Cash</Text>
+                  <Text style={[styles.walletBalanceValue, { color: colors.text }]}>
                     {formatCurrency(wallet.cashBalance)}
                   </Text>
                 </View>
@@ -352,23 +356,23 @@ export default function HomeScreen({ navigation }: Props) {
 
         {/* Active Orders */}
         {activeOrders.length > 0 && (
-          <View style={styles.ordersCard}>
+          <View style={[styles.ordersCard, { backgroundColor: colors.card }]}>
             <View style={styles.ordersHeader}>
               <View style={styles.ordersHeaderLeft}>
-                <MaterialCommunityIcons name="package-variant" size={24} color="#10b981" />
-                <Text style={styles.ordersTitle}>Active Orders</Text>
+                <MaterialCommunityIcons name="package-variant" size={24} color={colors.primary} />
+                <Text style={[styles.ordersTitle, { color: colors.text }]}>Active Orders</Text>
               </View>
-              <View style={styles.ordersCountBadge}>
-                <Text style={styles.ordersCount}>{activeOrders.length}</Text>
+              <View style={[styles.ordersCountBadge, { backgroundColor: colors.primaryLight }]}>
+                <Text style={[styles.ordersCount, { color: colors.primary }]}>{activeOrders.length}</Text>
               </View>
             </View>
             {activeOrders.map((order) => (
-              <View key={order.id} style={styles.orderItem}>
+              <View key={order.id} style={[styles.orderItem, { borderTopColor: colors.border }]}>
                 <View style={styles.orderInfo}>
-                  <Text style={styles.orderEnergy}>
+                  <Text style={[styles.orderEnergy, { color: colors.text }]}>
                     {formatEnergy(order.energyAmount, 'kWh')}
                   </Text>
-                  <Text style={styles.orderPrice}>
+                  <Text style={[styles.orderPrice, { color: colors.textSecondary }]}>
                     @ {formatCurrency(order.pricePerUnit)}/unit
                   </Text>
                 </View>
@@ -426,29 +430,29 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
 
         <TouchableOpacity
-          style={styles.withdrawButton}
+          style={[styles.withdrawButton, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => navigation.navigate('Wallet')}
         >
-          <Ionicons name="cash-outline" size={20} color="#10b981" style={{ marginRight: 8 }} />
-          <Text style={styles.withdrawButtonText}>Withdraw Cash</Text>
-          <Ionicons name="chevron-forward" size={20} color="#10b981" style={{ marginLeft: 'auto' }} />
+          <Ionicons name="cash-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+          <Text style={[styles.withdrawButtonText, { color: colors.text }]}>Withdraw Cash</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
 
         {/* View Charts Button */}
         <TouchableOpacity
-          style={styles.chartButton}
+          style={[styles.chartButton, { backgroundColor: colors.card, borderColor: colors.border }]}
           onPress={() => navigation.navigate('EnergyChart')}
         >
-          <MaterialCommunityIcons name="chart-timeline-variant" size={24} color="#10b981" />
-          <Text style={styles.chartButtonText}>View Detailed Charts</Text>
-          <Ionicons name="chevron-forward" size={20} color="#6b7280" />
+          <MaterialCommunityIcons name="chart-timeline-variant" size={24} color={colors.primary} />
+          <Text style={[styles.chartButtonText, { color: colors.text }]}>View Detailed Charts</Text>
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
 
         {/* Energy Flow Visualization - Dynamic Version */}
-        <View style={styles.energyFlowContainerCompact}>
+        <View style={[styles.energyFlowContainerCompact, { backgroundColor: colors.card }]}>
           <View style={styles.energyFlowHeader}>
-            <MaterialCommunityIcons name="transit-connection-variant" size={20} color="#10b981" />
-            <Text style={styles.energyFlowTitleCompact}>Energy Flow</Text>
+            <MaterialCommunityIcons name="transit-connection-variant" size={20} color={colors.primary} />
+            <Text style={[styles.energyFlowTitleCompact, { color: colors.text }]}>Energy Flow</Text>
           </View>
           <View style={styles.energyFlowDiagramCompact}>
             {visibleEnergyNodes.map((nodeId, index) => {

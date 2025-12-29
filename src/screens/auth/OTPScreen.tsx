@@ -15,6 +15,8 @@ import { RootStackParamList } from '@/types';
 import { useAuthStore } from '@/store';
 import { OTP_RESEND_COOLDOWN } from '@/utils/constants';
 import { authService } from '@/services/api/authService';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type OTPScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OTP'>;
 type OTPScreenRouteProp = RouteProp<RootStackParamList, 'OTP'>;
@@ -25,6 +27,9 @@ interface Props {
 }
 
 export default function OTPScreen({ navigation, route }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   if (!route.params?.email) {
     // Redirect to login if email is missing
     navigation.replace('Login');
@@ -127,12 +132,12 @@ export default function OTPScreen({ navigation, route }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Enter OTP</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: colors.text }]}>Enter OTP</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           We've sent a 6-digit code to {email}
         </Text>
 
@@ -143,7 +148,7 @@ export default function OTPScreen({ navigation, route }: Props) {
               ref={(ref) => {
                 inputRefs.current[index] = ref;
               }}
-              style={styles.otpInput}
+              style={[styles.otpInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText }]}
               value={digit}
               onChangeText={(value) => handleOtpChange(index, value)}
               onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
@@ -169,7 +174,7 @@ export default function OTPScreen({ navigation, route }: Props) {
           disabled={resendCooldown > 0}
           style={styles.resendButton}
         >
-          <Text style={[styles.resendText, resendCooldown > 0 && styles.resendDisabled]}>
+          <Text style={[styles.resendText, { color: colors.primary }, resendCooldown > 0 && styles.resendDisabled]}>
             {resendCooldown > 0
               ? `Resend OTP in ${resendCooldown}s`
               : 'Resend OTP'}

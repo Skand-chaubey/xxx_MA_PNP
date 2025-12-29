@@ -14,6 +14,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '@/types';
 import { supabaseAuthService } from '@/services/supabase/authService';
+import { useTheme } from '@/contexts';
+import { getThemedColors } from '@/utils/themedStyles';
 
 type VerifyResetCodeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -33,6 +35,9 @@ interface Props {
 const CODE_LENGTH = 6;
 
 export default function VerifyResetCodeScreen({ navigation, route }: Props) {
+  const { isDark } = useTheme();
+  const colors = getThemedColors(isDark);
+  
   const { email } = route.params;
   const [code, setCode] = useState<string[]>(Array(CODE_LENGTH).fill(''));
   const [isLoading, setIsLoading] = useState(false);
@@ -158,7 +163,7 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -171,19 +176,19 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={styles.content}>
           {/* Icon */}
-          <View style={styles.iconContainer}>
-            <Ionicons name="mail-open-outline" size={48} color="#10b981" />
+          <View style={[styles.iconContainer, { backgroundColor: colors.primaryLight }]}>
+            <Ionicons name="mail-open-outline" size={48} color={colors.primary} />
           </View>
 
-          <Text style={styles.title}>Verify Your Email</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, { color: colors.text }]}>Verify Your Email</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             We've sent a 6-digit verification code to{'\n'}
-            <Text style={styles.emailText}>{email}</Text>
+            <Text style={[styles.emailText, { color: colors.primary }]}>{email}</Text>
           </Text>
 
           {/* OTP Input Boxes */}
@@ -198,6 +203,7 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
                   }}
                   style={[
                     styles.codeInput,
+                    { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.inputText },
                     code[index] ? styles.codeInputFilled : null,
                     error ? styles.codeInputError : null,
                   ]}
@@ -216,8 +222,8 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
           {/* Error Message */}
           {error ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={16} color="#ef4444" />
-              <Text style={styles.errorText}>{error}</Text>
+              <Ionicons name="alert-circle" size={16} color={colors.error} />
+              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           ) : null}
 
@@ -236,7 +242,7 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
 
           {/* Resend Code */}
           <View style={styles.resendContainer}>
-            <Text style={styles.resendText}>Didn't receive the code? </Text>
+            <Text style={[styles.resendText, { color: colors.textSecondary }]}>Didn't receive the code? </Text>
             <TouchableOpacity
               onPress={handleResendCode}
               disabled={resendCooldown > 0 || isLoading}
@@ -244,6 +250,7 @@ export default function VerifyResetCodeScreen({ navigation, route }: Props) {
               <Text
                 style={[
                   styles.resendLink,
+                  { color: colors.primary },
                   (resendCooldown > 0 || isLoading) && styles.resendLinkDisabled,
                 ]}
               >
