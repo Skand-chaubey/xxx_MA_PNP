@@ -1,12 +1,24 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Image,
+  ActivityIndicator,
+  Modal,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import { useAuthStore, useMeterStore } from '@/store';
+import { useAuthStore, useMeterStore, useKYCStore, useThemeStore } from '@/store';
+import type { ThemeMode } from '@/store';
 import { supabaseStorageService } from '@/services/supabase/storageService';
 import { supabaseAuthService } from '@/services/supabase/authService';
 
@@ -16,17 +28,87 @@ interface Props {
   navigation: ProfileScreenNavigationProp;
 }
 
+// Theme options
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: string }[] = [
+  { value: 'system', label: 'System Default', icon: 'phone-portrait-outline' },
+  { value: 'light', label: 'Light Mode', icon: 'sunny-outline' },
+  { value: 'dark', label: 'Dark Mode', icon: 'moon-outline' },
+];
+
+// KYC Status configurations
+const KYC_STATUS_CONFIG = {
+  pending: {
+    badge: 'Pending',
+    badgeColor: '#f59e0b',
+    badgeBg: '#fef3c7',
+    description: 'Your KYC verification is pending review.',
+    icon: 'time-outline',
+  },
+  verified: {
+    badge: 'Verified',
+    badgeColor: '#10b981',
+    badgeBg: '#d1fae5',
+    description: 'Your identity has been successfully verified.',
+    icon: 'checkmark-circle',
+  },
+  rejected: {
+    badge: 'Rejected',
+    badgeColor: '#ef4444',
+    badgeBg: '#fee2e2',
+    description: 'Your KYC was rejected. Please re-submit documents.',
+    icon: 'close-circle',
+  },
+  'not-started': {
+    badge: 'Not Started',
+    badgeColor: '#6b7280',
+    badgeBg: '#f3f4f6',
+    description: 'Complete KYC to unlock all features.',
+    icon: 'alert-circle-outline',
+  },
+};
+
 export default function ProfileScreen({ navigation }: Props) {
   const { logout, user, setUser } = useAuthStore();
   const { currentMeter, removeMeter } = useMeterStore();
+  const { status: kycStatus } = useKYCStore();
+  const { themeMode, setThemeMode, restoreTheme } = useThemeStore();
+  
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+
+  // Restore theme on mount
+  useEffect(() => {
+    restoreTheme();
+  }, []);
+
+  // Get KYC display status
+  const getKYCDisplayStatus = () => {
+    if (!user) return 'not-started';
+    return user.kycStatus || 'pending';
+  };
+
+  const kycDisplayStatus = getKYCDisplayStatus();
+  const kycConfig = KYC_STATUS_CONFIG[kycDisplayStatus as keyof typeof KYC_STATUS_CONFIG] || KYC_STATUS_CONFIG['not-started'];
 
   const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to logout. Please try again.');
-    }
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteMeter = () => {
@@ -154,7 +236,23 @@ export default function ProfileScreen({ navigation }: Props) {
     }
   };
 
+  const handleThemeChange = async (mode: ThemeMode) => {
+    await setThemeMode(mode);
+    setShowThemeModal(false);
+  };
+
+  const getAppVersion = () => {
+    return Constants.expoConfig?.version || '1.0.0';
+  };
+
   const menuItems = [
+    {
+      id: 'editProfile',
+      title: 'Edit Profile',
+      subtitle: 'Update your personal information',
+      icon: <MaterialCommunityIcons name="account-edit" size={24} color="#10b981" />,
+      onPress: () => navigation.navigate('EditProfile'),
+    },
     {
       id: 'tradingBot',
       title: 'Trading Bot Settings',
@@ -163,11 +261,11 @@ export default function ProfileScreen({ navigation }: Props) {
       onPress: () => navigation.navigate('TradingBot'),
     },
     {
-      id: 'kyc',
-      title: 'KYC Verification',
-      subtitle: 'Verify your identity',
-      icon: <MaterialCommunityIcons name="shield-check" size={24} color="#10b981" />,
-      onPress: () => navigation.navigate('KYC'),
+      id: 'theme',
+      title: 'Theme Preference',
+      subtitle: THEME_OPTIONS.find(t => t.value === themeMode)?.label || 'System Default',
+      icon: <Ionicons name={themeMode === 'dark' ? 'moon' : themeMode === 'light' ? 'sunny' : 'phone-portrait-outline'} size={24} color="#10b981" />,
+      onPress: () => setShowThemeModal(true),
     },
     {
       id: 'meter',
@@ -243,6 +341,32 @@ export default function ProfileScreen({ navigation }: Props) {
             </View>
           )}
 
+          {/* KYC Status Card */}
+          <TouchableOpacity
+            style={styles.kycCard}
+            onPress={() => navigation.navigate('KYC')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.kycHeader}>
+              <View style={styles.kycIconContainer}>
+                <MaterialCommunityIcons name="shield-check" size={24} color="#10b981" />
+              </View>
+              <View style={styles.kycInfo}>
+                <View style={styles.kycTitleRow}>
+                  <Text style={styles.kycTitle}>KYC Verification</Text>
+                  <View style={[styles.kycBadge, { backgroundColor: kycConfig.badgeBg }]}>
+                    <Ionicons name={kycConfig.icon as any} size={12} color={kycConfig.badgeColor} />
+                    <Text style={[styles.kycBadgeText, { color: kycConfig.badgeColor }]}>
+                      {kycConfig.badge}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.kycDescription}>{kycConfig.description}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </View>
+          </TouchableOpacity>
+
           {/* Current Meter Info */}
           {currentMeter && (
             <View style={styles.meterCard}>
@@ -251,7 +375,7 @@ export default function ProfileScreen({ navigation }: Props) {
                   <MaterialCommunityIcons name="meter-electric" size={24} color="#10b981" />
                 </View>
                 <View style={styles.meterInfo}>
-                  <Text style={styles.meterTitle}>Current Meter</Text>
+                  <Text style={styles.meterTitle}>Linked Meter</Text>
                   <Text style={styles.meterSerial}>{currentMeter.meterSerialId}</Text>
                   <Text style={styles.meterDiscom}>{currentMeter.discomName}</Text>
                 </View>
@@ -289,6 +413,22 @@ export default function ProfileScreen({ navigation }: Props) {
             ))}
           </View>
 
+          {/* Account Info Section */}
+          <View style={styles.menuSection}>
+            <Text style={styles.sectionTitle}>Account</Text>
+            
+            {/* App Version */}
+            <View style={styles.infoItem}>
+              <View style={styles.menuIconContainer}>
+                <Ionicons name="information-circle" size={24} color="#10b981" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuItemText}>App Version</Text>
+                <Text style={styles.menuItemSubtext}>v{getAppVersion()}</Text>
+              </View>
+            </View>
+          </View>
+
           {/* Logout Button */}
           <TouchableOpacity
             style={styles.logoutButton}
@@ -305,6 +445,64 @@ export default function ProfileScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Theme Selection Modal */}
+      <Modal
+        visible={showThemeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowThemeModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowThemeModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Theme Preference</Text>
+            <Text style={styles.modalSubtitle}>Choose your preferred appearance</Text>
+            
+            {THEME_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.themeOption,
+                  themeMode === option.value && styles.themeOptionActive,
+                ]}
+                onPress={() => handleThemeChange(option.value)}
+                activeOpacity={0.7}
+              >
+                <View style={[
+                  styles.themeIconContainer,
+                  themeMode === option.value && styles.themeIconContainerActive,
+                ]}>
+                  <Ionicons
+                    name={option.icon as any}
+                    size={24}
+                    color={themeMode === option.value ? '#ffffff' : '#10b981'}
+                  />
+                </View>
+                <Text style={[
+                  styles.themeOptionText,
+                  themeMode === option.value && styles.themeOptionTextActive,
+                ]}>
+                  {option.label}
+                </Text>
+                {themeMode === option.value && (
+                  <Ionicons name="checkmark-circle" size={24} color="#10b981" />
+                )}
+              </TouchableOpacity>
+            ))}
+            
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowThemeModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -473,6 +671,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     marginTop: 8,
+    marginBottom: 40,
     shadowColor: '#ef4444',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -553,5 +752,147 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#ef4444',
+  },
+  // KYC Card styles
+  kycCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  kycHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  kycIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ecfdf5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  kycInfo: {
+    flex: 1,
+  },
+  kycTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  kycTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginRight: 8,
+  },
+  kycBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  kycBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  kycDescription: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  // Info item style
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  themeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  themeOptionActive: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#10b981',
+  },
+  themeIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#ecfdf5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  themeIconContainerActive: {
+    backgroundColor: '#10b981',
+  },
+  themeOptionText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  themeOptionTextActive: {
+    color: '#111827',
+  },
+  modalCloseButton: {
+    marginTop: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '600',
   },
 });

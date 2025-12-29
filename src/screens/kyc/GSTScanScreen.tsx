@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
-import { useKYCStore } from '@/store';
+import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 
 type GSTScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'GSTScan'>;
@@ -37,7 +37,8 @@ interface ExtractedGSTData {
 }
 
 export default function GSTScanScreen({ navigation }: Props) {
-  const { setKYCData } = useKYCStore();
+  const { submitDocument, isSubmitting, canUseOCR, getDocumentStatus } = useKYCStore();
+  const { user } = useAuthStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedGSTData>({
@@ -54,14 +55,35 @@ export default function GSTScanScreen({ navigation }: Props) {
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [isExpoGo, setIsExpoGo] = useState(false);
 
-  // Check if running in Expo Go on mount
+  // Check OCR access and Expo Go status on mount
   useEffect(() => {
     const checkExpoGo = ocrService.isRunningInExpoGo();
     setIsExpoGo(checkExpoGo);
     if (checkExpoGo && __DEV__) {
       console.log('📱 Running in Expo Go - OCR disabled');
     }
-  }, []);
+    
+    // Check if OCR can be used for this document
+    const ocrAllowed = canUseOCR('gst');
+    const docStatus = getDocumentStatus('gst');
+    
+    if (!ocrAllowed) {
+      console.log('[GSTScan] OCR not allowed, status:', docStatus);
+      if (docStatus === 'verified') {
+        Alert.alert(
+          'Document Verified',
+          'Your GST certificate has already been verified. No re-upload needed.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else if (docStatus === 'pending') {
+        Alert.alert(
+          'Document Pending',
+          'Your GST certificate is currently being reviewed. Please wait for verification.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [canUseOCR, getDocumentStatus, navigation]);
 
   /**
    * Format date with slashes: DD/MM/YYYY
@@ -345,41 +367,20 @@ export default function GSTScanScreen({ navigation }: Props) {
    * Handle image upload
    */
   const handleUploadImage = async () => {
+    // Check if running in Expo Go - silently fall back to manual entry
     if (isExpoGo) {
-      Alert.alert(
-        'Development Build Required',
-        'Document scanning requires a development build.\n\n' +
-        'OCR will not work in Expo Go, but you can still upload an image and enter details manually.\n\n' +
-        'To enable OCR:\n' +
-        '• Run: npx expo prebuild\n' +
-        '• Run: npx expo run:android',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Enter Manually',
-            onPress: () => {
-              setExtractedData({
-                gstin: '',
-                legalName: '',
-                tradeName: '',
-                constitutionOfBusiness: '',
-                dateOfRegistration: '',
-                businessAddress: '',
-                stateJurisdiction: '',
-              });
-              setShowForm(true);
-              setIsManualEntry(true);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
+      console.log('[GSTScan] Expo Go detected - using manual entry mode');
+      setExtractedData({
+        gstin: '',
+        legalName: '',
+        tradeName: '',
+        constitutionOfBusiness: '',
+        dateOfRegistration: '',
+        businessAddress: '',
+        stateJurisdiction: '',
+      });
+      setShowForm(true);
+      setIsManualEntry(true);
       return;
     }
     
@@ -516,14 +517,9 @@ export default function GSTScanScreen({ navigation }: Props) {
           console.error('❌ GST OCR Error:', ocrError?.name || 'Unknown');
         }
         
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'Development Build Required',
-            'Document scanning requires a development build.\n\n' +
-            'Please use the PowerNetPro app or create a development build.\n\n' +
-            'You can manually enter your GST details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[GSTScan] Expo Go detected during OCR - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -531,13 +527,9 @@ export default function GSTScanScreen({ navigation }: Props) {
           return;
         }
         
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your GST details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[GSTScan] OCR not available - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -545,11 +537,8 @@ export default function GSTScanScreen({ navigation }: Props) {
           return;
         }
         
-        Alert.alert(
-          'Processing Error',
-          'Could not process the image. Please try again or enter details manually.',
-          [{ text: 'Enter Manually', style: 'default' }]
-        );
+        // Handle generic OCR errors - silently fall back to manual entry
+        console.log('[GSTScan] OCR processing error - using manual entry');
         setExtractedData(emptyData);
         setShowForm(true);
         setIsManualEntry(true);
@@ -654,18 +643,19 @@ export default function GSTScanScreen({ navigation }: Props) {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found. Please sign in again.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
 
-      // Store locally in Zustand (Phase-1: No Supabase)
-      setKYCData({
-        userId: 'current_user_id',
-        documentType: 'gst',
+      // Submit to KYC store (handles both DB submission and local state update)
+      await submitDocument(user.id, 'gst', {
         documentNumber: extractedData.gstin,
         name: extractedData.legalName,
         address: extractedData.businessAddress || undefined,
-        status: 'pending',
-        submittedAt: new Date(),
       });
 
       Alert.alert(

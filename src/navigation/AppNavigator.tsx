@@ -39,6 +39,7 @@ import EnergyChartScreen from '@/screens/home/EnergyChartScreen';
 
 // Profile Screens
 import TradingBotScreen from '@/screens/profile/TradingBotScreen';
+import EditProfileScreen from '@/screens/profile/EditProfileScreen';
 
 // Wallet Screens
 import TopUpScreen from '@/screens/wallet/TopUpScreen';
@@ -203,6 +204,11 @@ export const AppNavigator = () => {
             <RootStack.Screen
               name="TradingBot"
               component={TradingBotScreen}
+              options={{ presentation: 'modal' }}
+            />
+            <RootStack.Screen
+              name="EditProfile"
+              component={EditProfileScreen}
               options={{ presentation: 'modal' }}
             />
             <RootStack.Screen

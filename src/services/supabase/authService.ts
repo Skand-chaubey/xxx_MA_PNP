@@ -14,11 +14,13 @@ export interface SignUpRequest {
   email: string;
   password: string;
   name?: string;
+  phoneNumber?: string; // Phase 2: Store phone number with user account
 }
 
 export interface SignInRequest {
   email: string;
   password: string;
+  phoneNumber?: string; // Phase 2: Support mobile number login
 }
 
 export interface AuthResponse {
@@ -155,7 +157,7 @@ class SupabaseAuthService {
   /**
    * Get or create user profile in public.users table
    */
-  private async getOrCreateUserProfile(userId: string, email: string, name?: string): Promise<User> {
+  private async getOrCreateUserProfile(userId: string, email: string, name?: string, phoneNumber?: string): Promise<User> {
     try {
       if (__DEV__) {
         console.log('👤 Fetching user profile for:', userId);
@@ -218,7 +220,7 @@ class SupabaseAuthService {
           id: userId,
           email: email,
           name: name || null,
-          phone_number: null, // Set to null if not provided (column should be nullable)
+          phone_number: phoneNumber || null, // Store phone number if provided
           kyc_status: 'pending',
         })
         .select()
@@ -446,7 +448,8 @@ class SupabaseAuthService {
         const profilePromise = this.getOrCreateUserProfile(
           authData.user.id,
           data.email.toLowerCase().trim(),
-          data.name || undefined
+          data.name || undefined,
+          data.phoneNumber || undefined
         );
 
         const profileTimeoutPromise = new Promise((_, reject) =>

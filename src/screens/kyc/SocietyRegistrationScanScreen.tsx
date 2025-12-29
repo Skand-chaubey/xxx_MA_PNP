@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
-import { useKYCStore } from '@/store';
+import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 
 type SocietyRegistrationScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SocietyRegistrationScan'>;
@@ -37,7 +37,8 @@ interface ExtractedSocietyData {
 }
 
 export default function SocietyRegistrationScanScreen({ navigation }: Props) {
-  const { setKYCData } = useKYCStore();
+  const { submitDocument, isSubmitting, canUseOCR, getDocumentStatus } = useKYCStore();
+  const { user } = useAuthStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedSocietyData>({
@@ -54,14 +55,35 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [isExpoGo, setIsExpoGo] = useState(false);
 
-  // Check if running in Expo Go on mount
+  // Check OCR access and Expo Go status on mount
   useEffect(() => {
     const checkExpoGo = ocrService.isRunningInExpoGo();
     setIsExpoGo(checkExpoGo);
     if (checkExpoGo && __DEV__) {
       console.log('📱 Running in Expo Go - OCR disabled');
     }
-  }, []);
+    
+    // Check if OCR can be used for this document
+    const ocrAllowed = canUseOCR('society_registration');
+    const docStatus = getDocumentStatus('society_registration');
+    
+    if (!ocrAllowed) {
+      console.log('[SocietyRegistrationScan] OCR not allowed, status:', docStatus);
+      if (docStatus === 'verified') {
+        Alert.alert(
+          'Document Verified',
+          'Your society registration has already been verified. No re-upload needed.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else if (docStatus === 'pending') {
+        Alert.alert(
+          'Document Pending',
+          'Your society registration is currently being reviewed. Please wait for verification.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [canUseOCR, getDocumentStatus, navigation]);
 
   /**
    * Format date with slashes: DD/MM/YYYY
@@ -330,41 +352,20 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
    * Handle image upload
    */
   const handleUploadImage = async () => {
+    // Check if running in Expo Go - silently fall back to manual entry
     if (isExpoGo) {
-      Alert.alert(
-        'Development Build Required',
-        'Document scanning requires a development build.\n\n' +
-        'OCR will not work in Expo Go, but you can still upload an image and enter details manually.\n\n' +
-        'To enable OCR:\n' +
-        '• Run: npx expo prebuild\n' +
-        '• Run: npx expo run:android',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Enter Manually',
-            onPress: () => {
-              setExtractedData({
-                societyName: '',
-                registrationNumber: '',
-                dateOfRegistration: '',
-                typeOfSociety: '',
-                registeredAddress: '',
-                registeringAuthority: '',
-                state: '',
-              });
-              setShowForm(true);
-              setIsManualEntry(true);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
+      console.log('[SocietyRegistrationScan] Expo Go detected - using manual entry mode');
+      setExtractedData({
+        societyName: '',
+        registrationNumber: '',
+        dateOfRegistration: '',
+        typeOfSociety: '',
+        registeredAddress: '',
+        registeringAuthority: '',
+        state: '',
+      });
+      setShowForm(true);
+      setIsManualEntry(true);
       return;
     }
     
@@ -501,14 +502,9 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
           console.error('❌ Society OCR Error:', ocrError?.name || 'Unknown');
         }
         
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'Development Build Required',
-            'Document scanning requires a development build.\n\n' +
-            'Please use the PowerNetPro app or create a development build.\n\n' +
-            'You can manually enter your society details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[SocietyRegistrationScan] Expo Go detected during OCR - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -516,13 +512,9 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
           return;
         }
         
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your society details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[SocietyRegistrationScan] OCR not available - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -530,11 +522,8 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
           return;
         }
         
-        Alert.alert(
-          'Processing Error',
-          'Could not process the image. Please try again or enter details manually.',
-          [{ text: 'Enter Manually', style: 'default' }]
-        );
+        // Handle generic OCR errors - silently fall back to manual entry
+        console.log('[SocietyRegistrationScan] OCR processing error - using manual entry');
         setExtractedData(emptyData);
         setShowForm(true);
         setIsManualEntry(true);
@@ -630,18 +619,19 @@ export default function SocietyRegistrationScanScreen({ navigation }: Props) {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found. Please sign in again.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
 
-      // Store locally in Zustand (Phase-1: No Supabase image upload)
-      setKYCData({
-        userId: 'current_user_id',
-        documentType: 'society_registration',
+      // Submit to KYC store (handles both DB submission and local state update)
+      await submitDocument(user.id, 'society_registration', {
         documentNumber: extractedData.registrationNumber,
         name: extractedData.societyName,
         address: extractedData.registeredAddress || undefined,
-        status: 'pending',
-        submittedAt: new Date(),
       });
 
       Alert.alert(

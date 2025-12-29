@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
-import { useKYCStore } from '@/store';
+import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 
 type PANScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'PANScan'>;
@@ -34,7 +34,8 @@ interface ExtractedPANData {
 }
 
 export default function PANScanScreen({ navigation }: Props) {
-  const { setKYCData } = useKYCStore();
+  const { submitDocument, isSubmitting, canUseOCR, getDocumentStatus } = useKYCStore();
+  const { user } = useAuthStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedPANData>({
@@ -48,14 +49,35 @@ export default function PANScanScreen({ navigation }: Props) {
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [isExpoGo, setIsExpoGo] = useState(false);
 
-  // Check if running in Expo Go on mount
+  // Check OCR access and Expo Go status on mount
   useEffect(() => {
     const checkExpoGo = ocrService.isRunningInExpoGo();
     setIsExpoGo(checkExpoGo);
     if (checkExpoGo && __DEV__) {
       console.log('📱 Running in Expo Go - OCR disabled');
     }
-  }, []);
+    
+    // Check if OCR can be used for this document
+    const ocrAllowed = canUseOCR('pan');
+    const docStatus = getDocumentStatus('pan');
+    
+    if (!ocrAllowed) {
+      console.log('[PANScan] OCR not allowed, status:', docStatus);
+      if (docStatus === 'verified') {
+        Alert.alert(
+          'Document Verified',
+          'Your PAN card has already been verified. No re-upload needed.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else if (docStatus === 'pending') {
+        Alert.alert(
+          'Document Pending',
+          'Your PAN card is currently being reviewed. Please wait for verification.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [canUseOCR, getDocumentStatus, navigation]);
 
   /**
    * Format DOB with slashes: DD/MM/YYYY
@@ -321,36 +343,17 @@ export default function PANScanScreen({ navigation }: Props) {
    * Handle image upload
    */
   const handleUploadImage = async () => {
-    // Check if running in Expo Go and Cloud OCR is not available
-    if (isExpoGo && !ocrService.isCloudOCRAvailable()) {
-      Alert.alert(
-        'OCR Not Available',
-        'Document scanning requires a development build or Cloud OCR API.\n\n' +
-        'You can upload an image or enter details manually.',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Enter Manually',
-            onPress: () => {
-              setExtractedData({
-                fullName: '',
-                panNumber: '',
-                dateOfBirth: '',
-                fatherName: '',
-              });
-              setShowForm(true);
-              setIsManualEntry(true);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
+    // Check if running in Expo Go - silently fall back to manual entry
+    if (isExpoGo) {
+      console.log('[PANScan] Expo Go detected - using manual entry mode');
+      setExtractedData({
+        fullName: '',
+        panNumber: '',
+        dateOfBirth: '',
+        fatherName: '',
+      });
+      setShowForm(true);
+      setIsManualEntry(true);
       return;
     }
     
@@ -492,16 +495,9 @@ export default function PANScanScreen({ navigation }: Props) {
           console.error('❌ PAN OCR Error:', ocrError?.name || 'Unknown');
         }
         
-        // Handle Expo Go detection
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'OCR Not Available',
-            'Document scanning requires either:\n\n' +
-            '• A development build (npx expo run:android)\n' +
-            '• Cloud OCR API key configured in app.json\n\n' +
-            'You can manually enter your PAN details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[PANScan] Expo Go detected during OCR - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -509,14 +505,9 @@ export default function PANScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle OCR not available error
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your PAN details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[PANScan] OCR not available - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -524,12 +515,8 @@ export default function PANScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle generic OCR errors
-        Alert.alert(
-          'Processing Error',
-          'Could not process the image. Please try again or enter details manually.',
-          [{ text: 'Enter Manually', style: 'default' }]
-        );
+        // Handle generic OCR errors - silently fall back to manual entry
+        console.log('[PANScan] OCR processing error - using manual entry');
         setExtractedData(emptyData);
         setShowForm(true);
         setIsManualEntry(true);
@@ -641,18 +628,19 @@ export default function PANScanScreen({ navigation }: Props) {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found. Please sign in again.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
 
-      // Set local KYC status = PENDING (NO Supabase calls as per requirements)
-      setKYCData({
-        userId: 'current_user_id',
-        documentType: 'pan',
+      // Submit to KYC store (handles both DB submission and local state update)
+      await submitDocument(user.id, 'pan', {
         documentNumber: extractedData.panNumber,
         name: extractedData.fullName || undefined,
         dateOfBirth: extractedData.dateOfBirth || undefined,
-        status: 'pending',
-        submittedAt: new Date(),
       });
 
       Alert.alert(

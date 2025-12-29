@@ -5,16 +5,24 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import { validateEmail } from '@/utils/helpers';
-import { validatePassword, passwordsMatch, PasswordValidation } from '@/utils/passwordValidation';
+import {
+  validateEmail,
+  validateMobileNumber,
+  validatePassword,
+  passwordsMatch,
+  validateTermsAccepted,
+  INDIA_COUNTRY_CODE,
+  formatMobileForDisplay,
+  cleanMobileNumber,
+} from '@/utils/authValidation';
 import { authService } from '@/services/api/authService';
 import { useAuthStore } from '@/store';
 
@@ -25,21 +33,43 @@ interface Props {
 }
 
 export default function SignUpScreen({ navigation }: Props) {
+  // Form state
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [name, setName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [showTermsError, setShowTermsError] = useState(false);
+  
+  // UI state
+  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  // Touched state
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [mobileTouched, setMobileTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
+  const [termsTouched, setTermsTouched] = useState(false);
+  
+  // Server error state
+  const [serverError, setServerError] = useState('');
+  
   const { setUser, setToken } = useAuthStore();
 
-  // Memoized password validation
-  const passwordValidation: PasswordValidation = useMemo(
+  // Memoized validations
+  const emailValidation = useMemo(
+    () => validateEmail(email),
+    [email]
+  );
+
+  const mobileValidation = useMemo(
+    () => validateMobileNumber(mobileNumber),
+    [mobileNumber]
+  );
+
+  const passwordValidation = useMemo(
     () => validatePassword(password),
     [password]
   );
@@ -49,41 +79,54 @@ export default function SignUpScreen({ navigation }: Props) {
     [password, confirmPassword]
   );
 
-  // Check if form is valid
+  const termsValidation = useMemo(
+    () => validateTermsAccepted(termsAccepted),
+    [termsAccepted]
+  );
+
+  // Form validity
   const isFormValid = useMemo(() => {
     return (
-      validateEmail(email.trim().toLowerCase()) &&
+      emailValidation.isValid &&
+      mobileValidation.isValid &&
       passwordValidation.isValid &&
       doPasswordsMatch &&
-      termsAccepted
+      termsValidation.isValid
     );
-  }, [email, passwordValidation.isValid, doPasswordsMatch, termsAccepted]);
+  }, [
+    emailValidation.isValid,
+    mobileValidation.isValid,
+    passwordValidation.isValid,
+    doPasswordsMatch,
+    termsValidation.isValid,
+  ]);
+
+  // Handle mobile number input with formatting
+  const handleMobileChange = (text: string) => {
+    // Only allow digits
+    const digitsOnly = text.replace(/\D/g, '');
+    // Limit to 10 digits
+    const limited = digitsOnly.slice(0, 10);
+    setMobileNumber(limited);
+    if (serverError) setServerError('');
+  };
 
   const handleSignUp = async () => {
-    // Check terms acceptance first
-    if (!termsAccepted) {
-      setShowTermsError(true);
-      return;
-    }
+    // Mark all fields as touched
+    setEmailTouched(true);
+    setMobileTouched(true);
+    setPasswordTouched(true);
+    setConfirmPasswordTouched(true);
+    setTermsTouched(true);
 
-    const trimmedEmail = email.trim().toLowerCase();
-
-    if (!validateEmail(trimmedEmail)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
-      return;
-    }
-
-    if (!passwordValidation.isValid) {
-      // Don't show alert - inline validation handles this
-      return;
-    }
-
-    if (!doPasswordsMatch) {
-      // Don't show alert - inline validation handles this
+    // Validate all fields
+    if (!isFormValid) {
       return;
     }
 
     setIsLoading(true);
+    setServerError('');
+
     try {
       if (__DEV__) {
         console.log('🚀 Starting sign up process...');
@@ -91,12 +134,13 @@ export default function SignUpScreen({ navigation }: Props) {
       }
 
       const response = await authService.signUp({
-        email: trimmedEmail,
+        email: emailValidation.formattedEmail,
         password: password,
         name: name.trim() || undefined,
+        phoneNumber: mobileValidation.formattedNumber,
       });
 
-      // SECURITY: Clear password from state after submission
+      // SECURITY: Clear passwords from state after submission
       setPassword('');
       setConfirmPassword('');
 
@@ -124,13 +168,13 @@ export default function SignUpScreen({ navigation }: Props) {
         if (__DEV__) {
           console.error('❌ Sign up failed:', response.error);
         }
-        Alert.alert('Sign Up Failed', response.error || 'Failed to create account. Please try again.');
+        setServerError(response.error || 'Failed to create account. Please try again.');
       }
     } catch (error: any) {
       if (__DEV__) {
         console.error('❌ Sign up exception:', error);
       }
-      Alert.alert('Error', error.message || 'Failed to sign up. Please try again.');
+      setServerError(error.message || 'Failed to sign up. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -150,37 +194,137 @@ export default function SignUpScreen({ navigation }: Props) {
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Join PowerNetPro</Text>
 
+          {/* Full Name Input */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Full Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your name"
-              autoCapitalize="words"
-              autoCorrect={false}
-              value={name}
-              onChangeText={setName}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email address"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordInputWrapper}>
+            <View style={styles.inputWrapper}>
+              <Ionicons
+                name="person-outline"
+                size={20}
+                color="#6b7280"
+                style={styles.inputIcon}
+              />
               <TextInput
-                style={styles.passwordInput}
+                style={styles.input}
+                placeholder="Enter your name"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="words"
+                autoCorrect={false}
+                value={name}
+                onChangeText={(text) => {
+                  setName(text);
+                  if (serverError) setServerError('');
+                }}
+              />
+            </View>
+          </View>
+
+          {/* Email Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Email Address *</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                emailTouched && !emailValidation.isValid && email.length > 0
+                  ? styles.inputError
+                  : emailTouched && emailValidation.isValid
+                  ? styles.inputSuccess
+                  : null,
+              ]}
+            >
+              <Ionicons
+                name="mail-outline"
+                size={20}
+                color="#6b7280"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email address"
+                placeholderTextColor="#9ca3af"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (serverError) setServerError('');
+                }}
+                onBlur={() => setEmailTouched(true)}
+              />
+              {emailTouched && email.length > 0 && (
+                <Ionicons
+                  name={emailValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={emailValidation.isValid ? '#10b981' : '#ef4444'}
+                />
+              )}
+            </View>
+            {emailTouched && !emailValidation.isValid && email.length > 0 && (
+              <Text style={styles.errorText}>{emailValidation.error}</Text>
+            )}
+          </View>
+
+          {/* Mobile Number Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Mobile Number *</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                mobileTouched && !mobileValidation.isValid && mobileNumber.length > 0
+                  ? styles.inputError
+                  : mobileTouched && mobileValidation.isValid
+                  ? styles.inputSuccess
+                  : null,
+              ]}
+            >
+              <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+              <TextInput
+                style={[styles.input, styles.inputWithPrefix]}
+                placeholder="Enter 10 digit mobile number"
+                placeholderTextColor="#9ca3af"
+                keyboardType="phone-pad"
+                maxLength={10}
+                value={mobileNumber}
+                onChangeText={handleMobileChange}
+                onBlur={() => setMobileTouched(true)}
+              />
+              {mobileTouched && mobileNumber.length > 0 && (
+                <Ionicons
+                  name={mobileValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={mobileValidation.isValid ? '#10b981' : '#ef4444'}
+                />
+              )}
+            </View>
+            {mobileTouched && !mobileValidation.isValid && mobileNumber.length > 0 && (
+              <Text style={styles.errorText}>{mobileValidation.error}</Text>
+            )}
+          </View>
+
+          {/* Password Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Password *</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                passwordTouched && !passwordValidation.isValid
+                  ? styles.inputError
+                  : passwordTouched && passwordValidation.isValid
+                  ? styles.inputSuccess
+                  : null,
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color="#6b7280"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.input}
                 placeholder="Create a strong password"
+                placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -188,11 +332,11 @@ export default function SignUpScreen({ navigation }: Props) {
                 onChangeText={(text) => {
                   setPassword(text);
                   if (!passwordTouched) setPasswordTouched(true);
+                  if (serverError) setServerError('');
                 }}
                 onBlur={() => setPasswordTouched(true)}
               />
               <TouchableOpacity
-                style={styles.eyeButton}
                 onPress={() => setShowPassword(!showPassword)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -204,7 +348,7 @@ export default function SignUpScreen({ navigation }: Props) {
               </TouchableOpacity>
             </View>
             
-            {/* Password Requirements Checklist - Always visible */}
+            {/* Password Requirements Checklist */}
             <View style={styles.passwordRequirements}>
               <Text style={styles.requirementsTitle}>Password must contain:</Text>
               <View style={styles.requirementRow}>
@@ -285,12 +429,29 @@ export default function SignUpScreen({ navigation }: Props) {
             </View>
           </View>
 
+          {/* Confirm Password Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm Password</Text>
-            <View style={styles.passwordInputWrapper}>
+            <Text style={styles.label}>Confirm Password *</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                confirmPasswordTouched && !doPasswordsMatch && confirmPassword.length > 0
+                  ? styles.inputError
+                  : confirmPasswordTouched && doPasswordsMatch && confirmPassword.length > 0
+                  ? styles.inputSuccess
+                  : null,
+              ]}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={20}
+                color="#6b7280"
+                style={styles.inputIcon}
+              />
               <TextInput
-                style={styles.passwordInput}
+                style={styles.input}
                 placeholder="Confirm your password"
+                placeholderTextColor="#9ca3af"
                 secureTextEntry={!showConfirmPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -298,11 +459,11 @@ export default function SignUpScreen({ navigation }: Props) {
                 onChangeText={(text) => {
                   setConfirmPassword(text);
                   if (!confirmPasswordTouched) setConfirmPasswordTouched(true);
+                  if (serverError) setServerError('');
                 }}
                 onBlur={() => setConfirmPasswordTouched(true)}
               />
               <TouchableOpacity
-                style={styles.eyeButton}
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -313,7 +474,7 @@ export default function SignUpScreen({ navigation }: Props) {
                 />
               </TouchableOpacity>
             </View>
-            {/* Confirm Password Error */}
+            {/* Confirm Password Error/Success */}
             {confirmPasswordTouched && confirmPassword.length > 0 && !doPasswordsMatch && (
               <Text style={styles.errorText}>Passwords do not match</Text>
             )}
@@ -325,13 +486,21 @@ export default function SignUpScreen({ navigation }: Props) {
             )}
           </View>
 
+          {/* Server Error */}
+          {serverError ? (
+            <View style={styles.serverErrorContainer}>
+              <Ionicons name="alert-circle" size={16} color="#ef4444" />
+              <Text style={styles.serverErrorText}>{serverError}</Text>
+            </View>
+          ) : null}
+
           {/* Terms & Conditions Checkbox */}
           <View style={styles.termsContainer}>
             <TouchableOpacity
               style={styles.checkboxRow}
               onPress={() => {
                 setTermsAccepted(!termsAccepted);
-                if (showTermsError) setShowTermsError(false);
+                setTermsTouched(true);
               }}
               activeOpacity={0.7}
             >
@@ -357,13 +526,12 @@ export default function SignUpScreen({ navigation }: Props) {
                 </Text>
               </Text>
             </TouchableOpacity>
-            {showTermsError && (
-              <Text style={styles.termsError}>
-                Please accept Terms & Conditions to continue
-              </Text>
+            {termsTouched && !termsValidation.isValid && (
+              <Text style={styles.termsError}>{termsValidation.error}</Text>
             )}
           </View>
 
+          {/* Sign Up Button */}
           <TouchableOpacity
             style={[
               styles.button,
@@ -377,6 +545,7 @@ export default function SignUpScreen({ navigation }: Props) {
             </Text>
           </TouchableOpacity>
 
+          {/* Sign In Link */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.linkButton}
@@ -402,7 +571,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 24,
-    justifyContent: 'center',
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   title: {
     fontSize: 32,
@@ -418,7 +587,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,
@@ -426,32 +595,37 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#111827',
-  },
-  passwordInputWrapper: {
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 8,
-  },
-  passwordInput: {
-    flex: 1,
     paddingHorizontal: 12,
+  },
+  inputError: {
+    borderColor: '#ef4444',
+  },
+  inputSuccess: {
+    borderColor: '#10b981',
+  },
+  inputIcon: {
+    marginRight: 8,
+  },
+  countryCode: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  input: {
+    flex: 1,
     paddingVertical: 12,
     fontSize: 16,
     color: '#111827',
   },
-  eyeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+  inputWithPrefix: {
+    paddingLeft: 4,
   },
   passwordRequirements: {
     marginTop: 10,
@@ -479,22 +653,34 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: '#ef4444',
-    marginTop: 6,
-    marginLeft: 4,
+    marginTop: 4,
   },
   matchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    marginLeft: 4,
+    marginTop: 4,
   },
   matchText: {
     fontSize: 12,
     color: '#10b981',
     marginLeft: 4,
   },
+  serverErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  serverErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#ef4444',
+    marginLeft: 8,
+  },
   termsContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -537,7 +723,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -548,7 +734,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   linkButton: {
-    marginTop: 8,
     alignItems: 'center',
     marginBottom: 24,
   },
@@ -561,4 +746,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

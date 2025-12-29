@@ -1,6 +1,16 @@
+/**
+ * OCR Service - ML Kit Only
+ * 
+ * ARCHITECTURAL DECISION:
+ * PowerNetPro uses ONLY on-device OCR via ML Kit.
+ * Google Cloud Vision OCR is NOT used anywhere in this project.
+ * 
+ * OCR works ONLY in development builds or production apps.
+ * In Expo Go, users must enter details manually.
+ */
+
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import Constants from 'expo-constants';
-import { cloudOCRService } from '../ocr/cloudOCRService';
 
 export interface OCRResult {
   text: string;
@@ -78,91 +88,35 @@ class OCRService {
   }
 
   /**
-   * Check if OCR is available (either native or cloud)
+   * Check if OCR is available (ML Kit only - requires dev build)
    */
   async isOCRAvailable(): Promise<boolean> {
-    // Native ML Kit available
+    // OCR only available in development builds with ML Kit
     if (!this.isRunningInExpoGo() && this.testMLKitFunctionality()) {
-      return true;
-    }
-    // Cloud OCR available
-    if (cloudOCRService.isConfigured()) {
       return true;
     }
     return false;
   }
 
   /**
-   * Check if cloud OCR is available (for Expo Go)
-   */
-  isCloudOCRAvailable(): boolean {
-    return cloudOCRService.isConfigured();
-  }
-
-  /**
-   * Extract text from image using ML Kit or Cloud OCR fallback
-   * Uses Cloud OCR in Expo Go if configured, otherwise throws error
+   * Extract text from image using ML Kit
+   * ONLY works in development builds - throws ExpoGoDetectedError in Expo Go
    */
   async recognizeText(imageUri: string): Promise<OCRResult> {
     // STEP 1: Check if running in Expo Go
     if (this.isRunningInExpoGo()) {
-      // Try Cloud OCR as fallback
-      if (cloudOCRService.isConfigured()) {
-        if (__DEV__) {
-          console.log('☁️ Using Cloud OCR (Expo Go detected)...');
-        }
-        try {
-          const cloudResult = await cloudOCRService.recognizeText(imageUri);
-          return {
-            text: cloudResult.text,
-            blocks: cloudResult.blocks.map(block => ({
-              text: block.text,
-              boundingBox: block.boundingBox || { x: 0, y: 0, width: 0, height: 0 },
-            })),
-          };
-        } catch (cloudError: any) {
-          if (__DEV__) {
-            console.error('❌ Cloud OCR failed:', cloudError.message);
-          }
-          throw new OCRNotAvailableError(`Cloud OCR failed: ${cloudError.message}`);
-        }
-      }
-      
-      // No fallback available
       if (__DEV__) {
-        console.warn('📱 Running in Expo Go - OCR requires development build or Cloud API');
+        console.warn('📱 Running in Expo Go - OCR requires PowerNetPro app build');
       }
       throw new ExpoGoDetectedError();
     }
 
     // STEP 2: Verify ML Kit is available
     if (!this.testMLKitFunctionality()) {
-      // Try Cloud OCR as fallback
-      if (cloudOCRService.isConfigured()) {
-        if (__DEV__) {
-          console.log('☁️ Using Cloud OCR (ML Kit not available)...');
-        }
-        try {
-          const cloudResult = await cloudOCRService.recognizeText(imageUri);
-          return {
-            text: cloudResult.text,
-            blocks: cloudResult.blocks.map(block => ({
-              text: block.text,
-              boundingBox: block.boundingBox || { x: 0, y: 0, width: 0, height: 0 },
-            })),
-          };
-        } catch (cloudError: any) {
-          if (__DEV__) {
-            console.error('❌ Cloud OCR failed:', cloudError.message);
-          }
-          throw new OCRNotAvailableError(`Cloud OCR failed: ${cloudError.message}`);
-        }
-      }
-      
       if (__DEV__) {
         console.warn('⚠️ ML Kit module not available');
       }
-      throw new OCRNotAvailableError('ML Kit module not available');
+      throw new OCRNotAvailableError('ML Kit module not available. Please use a development build.');
     }
 
     // STEP 3: Attempt native ML Kit OCR
@@ -173,7 +127,7 @@ class OCRService {
       }
 
       if (__DEV__) {
-        console.log('🔍 Starting native OCR...');
+        console.log('🔍 Starting ML Kit OCR...');
       }
 
       const result = await TextRecognition.recognize(processedUri);
@@ -186,7 +140,7 @@ class OCRService {
       }
 
       if (__DEV__) {
-        console.log('✅ OCR completed. Text length:', result.text.length);
+        console.log('✅ ML Kit OCR completed. Text length:', result.text.length);
         // NEVER log OCR text (contains sensitive PII data)
       }
       
@@ -223,7 +177,7 @@ class OCRService {
         throw new ExpoGoDetectedError();
       }
 
-      // Other OCR errors - throw without fallback
+      // Other OCR errors
       if (__DEV__) {
         console.error('❌ OCR Error:', errorMessage);
       }

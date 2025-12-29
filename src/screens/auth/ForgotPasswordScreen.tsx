@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import { validateEmail } from '@/utils/helpers';
+import {
+  validateIdentifier,
+  detectIdentifierType,
+  INDIA_COUNTRY_CODE,
+} from '@/utils/authValidation';
 import { supabaseAuthService } from '@/services/supabase/authService';
 
 type ForgotPasswordScreenNavigationProp = NativeStackNavigationProp<
@@ -25,18 +29,43 @@ interface Props {
 }
 
 export default function ForgotPasswordScreen({ navigation }: Props) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [emailTouched, setEmailTouched] = useState(false);
+  const [identifierTouched, setIdentifierTouched] = useState(false);
 
-  const isEmailValid = validateEmail(email.trim());
+  // Memoized validation
+  const identifierValidation = useMemo(
+    () => validateIdentifier(identifier),
+    [identifier]
+  );
+
+  const identifierType = useMemo(
+    () => detectIdentifierType(identifier),
+    [identifier]
+  );
+
+  // Get keyboard type based on detected identifier type
+  const getKeyboardType = () => {
+    if (identifierType === 'mobile') {
+      return 'phone-pad';
+    }
+    return 'email-address';
+  };
+
+  // Get placeholder hint
+  const getPlaceholder = () => {
+    if (identifierType === 'mobile') {
+      return 'Enter 10 digit mobile number';
+    }
+    return 'Email or mobile number';
+  };
 
   const handleSendResetCode = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
+    setIdentifierTouched(true);
 
-    if (!isEmailValid) {
-      setError('Please enter a valid email address');
+    if (!identifierValidation.isValid) {
+      setError(identifierValidation.error || 'Please enter a valid email or mobile number');
       return;
     }
 
@@ -45,19 +74,47 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
     try {
       if (__DEV__) {
-        console.log('📧 Sending password reset email to:', trimmedEmail);
+        console.log('📧 Sending password reset to:', identifierValidation.type, identifierValidation.formattedValue);
       }
 
-      const response = await supabaseAuthService.resetPasswordForEmail(trimmedEmail);
+      if (identifierValidation.type === 'email') {
+        // Email-based password reset
+        const response = await supabaseAuthService.resetPasswordForEmail(
+          identifierValidation.formattedValue
+        );
 
-      if (response.success) {
-        if (__DEV__) {
-          console.log('✅ Password reset email sent successfully');
+        if (response.success) {
+          if (__DEV__) {
+            console.log('✅ Password reset email sent successfully');
+          }
+          // Navigate to verify code screen
+          navigation.navigate('VerifyResetCode', { 
+            email: identifierValidation.formattedValue,
+            // Phase 2: Add identifierType for SMS support
+          });
+        } else {
+          setError(response.error || 'Failed to send reset code. Please try again.');
         }
-        // Navigate to verify code screen
-        navigation.navigate('VerifyResetCode', { email: trimmedEmail });
+      } else if (identifierValidation.type === 'mobile') {
+        // Phase 2: Mobile-based password reset (SMS OTP)
+        // For now, simulate success and navigate
+        if (__DEV__) {
+          console.log('📱 SMS OTP support - Phase 2 placeholder');
+        }
+        
+        // TODO: Implement SMS OTP sending in Phase 2
+        // For now, show a message that mobile reset will be supported soon
+        setError('SMS-based password reset coming soon. Please use email for now.');
+        
+        // When implemented:
+        // const response = await authService.sendSMSOTP(identifierValidation.formattedValue);
+        // if (response.success) {
+        //   navigation.navigate('VerifyResetCode', { 
+        //     phoneNumber: identifierValidation.formattedValue 
+        //   });
+        // }
       } else {
-        setError(response.error || 'Failed to send reset code. Please try again.');
+        setError('Please enter a valid email or mobile number');
       }
     } catch (err: any) {
       if (__DEV__) {
@@ -95,55 +152,78 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
 
           <Text style={styles.title}>Forgot Password?</Text>
           <Text style={styles.subtitle}>
-            Enter the email address associated with your account and we'll send you
-            a code to reset your password.
+            Enter the email address or mobile number associated with your account 
+            and we'll send you a code to reset your password.
           </Text>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address</Text>
+            <Text style={styles.label}>Email or Mobile Number</Text>
             <View
               style={[
                 styles.inputWrapper,
-                emailTouched && !isEmailValid && email.length > 0
+                identifierTouched && !identifierValidation.isValid && identifier.length > 0
                   ? styles.inputError
+                  : identifierTouched && identifierValidation.isValid
+                  ? styles.inputSuccess
                   : null,
               ]}
             >
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color="#6b7280"
-                style={styles.inputIcon}
-              />
+              {identifierType === 'mobile' ? (
+                <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+              ) : (
+                <Ionicons
+                  name="mail-outline"
+                  size={20}
+                  color="#6b7280"
+                  style={styles.inputIcon}
+                />
+              )}
               <TextInput
-                style={styles.input}
-                placeholder="Enter your email address"
+                style={[
+                  styles.input,
+                  identifierType === 'mobile' && styles.inputWithPrefix,
+                ]}
+                placeholder={getPlaceholder()}
                 placeholderTextColor="#9ca3af"
-                keyboardType="email-address"
+                keyboardType={getKeyboardType()}
                 autoCapitalize="none"
                 autoCorrect={false}
-                value={email}
+                value={identifier}
                 onChangeText={(text) => {
-                  setEmail(text);
+                  setIdentifier(text);
                   if (error) setError('');
                 }}
-                onBlur={() => setEmailTouched(true)}
+                onBlur={() => setIdentifierTouched(true)}
                 autoFocus
               />
-              {emailTouched && email.length > 0 && (
+              {identifierTouched && identifier.length > 0 && (
                 <Ionicons
-                  name={isEmailValid ? 'checkmark-circle' : 'alert-circle'}
+                  name={identifierValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
                   size={20}
-                  color={isEmailValid ? '#10b981' : '#ef4444'}
+                  color={identifierValidation.isValid ? '#10b981' : '#ef4444'}
                 />
               )}
             </View>
-            {emailTouched && !isEmailValid && email.length > 0 && (
-              <Text style={styles.validationError}>
-                Please enter a valid email address
-              </Text>
+            {identifierTouched && !identifierValidation.isValid && identifier.length > 0 && (
+              <Text style={styles.validationError}>{identifierValidation.error}</Text>
             )}
           </View>
+
+          {/* Delivery Method Hint */}
+          {identifierValidation.isValid && (
+            <View style={styles.hintContainer}>
+              <Ionicons 
+                name={identifierType === 'mobile' ? 'phone-portrait-outline' : 'mail-outline'} 
+                size={16} 
+                color="#10b981" 
+              />
+              <Text style={styles.hintText}>
+                {identifierType === 'mobile' 
+                  ? 'We will send an OTP via SMS'
+                  : 'We will send an OTP to your email'}
+              </Text>
+            </View>
+          )}
 
           {/* Error Message */}
           {error ? (
@@ -156,10 +236,10 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
           <TouchableOpacity
             style={[
               styles.button,
-              (!isEmailValid || isLoading) && styles.buttonDisabled,
+              (!identifierValidation.isValid || isLoading) && styles.buttonDisabled,
             ]}
             onPress={handleSendResetCode}
-            disabled={!isEmailValid || isLoading}
+            disabled={!identifierValidation.isValid || isLoading}
           >
             <Text style={styles.buttonText}>
               {isLoading ? 'Sending...' : 'Send Reset Code'}
@@ -224,7 +304,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   label: {
     fontSize: 14,
@@ -243,8 +323,17 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: '#ef4444',
   },
+  inputSuccess: {
+    borderColor: '#10b981',
+  },
   inputIcon: {
     marginRight: 10,
+  },
+  countryCode: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '500',
+    marginRight: 4,
   },
   input: {
     flex: 1,
@@ -252,10 +341,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
   },
+  inputWithPrefix: {
+    paddingLeft: 4,
+  },
   validationError: {
     fontSize: 12,
     color: '#ef4444',
     marginTop: 6,
+  },
+  hintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  hintText: {
+    fontSize: 13,
+    color: '#10b981',
+    marginLeft: 8,
   },
   errorContainer: {
     flexDirection: 'row',
@@ -263,7 +368,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   errorText: {
     flex: 1,

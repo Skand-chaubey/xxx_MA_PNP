@@ -14,14 +14,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import Constants from 'expo-constants';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
 import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabaseDatabaseService } from '@/services/supabase/databaseService';
-import { supabaseStorageService } from '@/services/supabase/storageService';
 
 type AadhaarScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'AadhaarScan'>;
 
@@ -37,7 +34,7 @@ interface ExtractedData {
 }
 
 export default function AadhaarScanScreen({ navigation }: Props) {
-  const { setKYCData } = useKYCStore();
+  const { submitDocument, isSubmitting, canUseOCR, getDocumentStatus, getDocument } = useKYCStore();
   const { user } = useAuthStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [backImageUri, setBackImageUri] = useState<string | null>(null);
@@ -55,14 +52,35 @@ export default function AadhaarScanScreen({ navigation }: Props) {
   const [needsBackSide, setNeedsBackSide] = useState(false); // Track if back side is needed
   const [isExpoGo, setIsExpoGo] = useState(false); // Track if running in Expo Go
 
-  // Check if running in Expo Go on mount
+  // Check OCR access and Expo Go status on mount
   useEffect(() => {
     const checkExpoGo = ocrService.isRunningInExpoGo();
     setIsExpoGo(checkExpoGo);
     if (checkExpoGo && __DEV__) {
       console.log('📱 Running in Expo Go - OCR disabled');
     }
-  }, []);
+    
+    // Check if OCR can be used for this document
+    const ocrAllowed = canUseOCR('aadhaar');
+    const docStatus = getDocumentStatus('aadhaar');
+    
+    if (!ocrAllowed) {
+      console.log('[AadhaarScan] OCR not allowed, status:', docStatus);
+      if (docStatus === 'verified') {
+        Alert.alert(
+          'Document Verified',
+          'Your Aadhaar card has already been verified. No re-upload needed.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else if (docStatus === 'pending') {
+        Alert.alert(
+          'Document Pending',
+          'Your Aadhaar card is currently being reviewed. Please wait for verification.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [canUseOCR, getDocumentStatus, navigation]);
 
   /**
    * Mask Aadhaar number: XXXX-XXXX-1234
@@ -725,41 +743,17 @@ export default function AadhaarScanScreen({ navigation }: Props) {
    * Handle image upload
    */
   const handleUploadImage = async () => {
-    // Check if running in Expo Go - show warning but still allow upload
-    // Cloud OCR can work in Expo Go if configured
-    if (isExpoGo && !ocrService.isCloudOCRAvailable()) {
-      Alert.alert(
-        'Development Build Required',
-        'Document scanning requires a development build or Cloud OCR.\n\n' +
-        'OCR will not work in Expo Go without Cloud API configured, but you can still upload an image and enter details manually.\n\n' +
-        'To enable OCR:\n' +
-        '• Set googleCloudVisionApiKey in app.json, OR\n' +
-        '• Run: npx expo prebuild\n' +
-        '• Run: npx expo run:android',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Enter Manually',
-            onPress: () => {
-              setExtractedData({
-                fullName: '',
-                aadhaarNumber: '',
-                dateOfBirth: '',
-                address: '',
-              });
-              setShowForm(true);
-              setIsManualEntry(true);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
+    // Check if running in Expo Go - silently fall back to manual entry
+    if (isExpoGo) {
+      console.log('[AadhaarScan] Expo Go detected - using manual entry mode');
+      setExtractedData({
+        fullName: '',
+        aadhaarNumber: '',
+        dateOfBirth: '',
+        address: '',
+      });
+      setShowForm(true);
+      setIsManualEntry(true);
       return;
     }
     
@@ -909,16 +903,9 @@ export default function AadhaarScanScreen({ navigation }: Props) {
           console.error('❌ OCR Error:', ocrError?.name || 'Unknown');
         }
         
-        // Handle Expo Go detection
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'OCR Not Available',
-            'Document scanning requires either:\n\n' +
-            '• A development build (npx expo run:android)\n' +
-            '• Cloud OCR API key configured in app.json\n\n' +
-            'You can manually enter your Aadhaar details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[AadhaarScan] Expo Go detected during OCR - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -926,14 +913,9 @@ export default function AadhaarScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle OCR not available error
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your Aadhaar details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[AadhaarScan] OCR not available - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -941,12 +923,8 @@ export default function AadhaarScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle generic OCR errors
-        Alert.alert(
-          'Processing Error',
-          'Could not process the image. Please try again or enter details manually.',
-          [{ text: 'Enter Manually', style: 'default' }]
-        );
+        // Handle generic OCR errors - silently fall back to manual entry
+        console.log('[AadhaarScan] OCR processing error - using manual entry');
         setExtractedData(emptyData);
         setShowForm(true);
         setIsManualEntry(true);
@@ -1291,64 +1269,13 @@ export default function AadhaarScanScreen({ navigation }: Props) {
     try {
       setIsProcessing(true);
 
-      // Upload image to Supabase Storage if available
-      let fileUrl: string | undefined;
-      if (imageUri) {
-        try {
-          // Read image as blob
-          const response = await fetch(imageUri);
-          const blob = await response.blob();
-          
-          // Upload to Supabase Storage
-          fileUrl = await supabaseStorageService.uploadKYCDocument(
-            user.id,
-            'aadhaar',
-            blob
-          );
-        } catch (uploadError: any) {
-          // Continue even if upload fails - common in emulator/network issues
-          // KYC can still be submitted with data but without image URL
-          if (__DEV__) {
-            const errorMsg = uploadError?.message || 'Unknown error';
-            if (errorMsg.includes('Network') || errorMsg.includes('network')) {
-              console.log('ℹ️ Image upload skipped (network unavailable) - KYC data will be saved without image');
-            } else {
-              console.warn('⚠️ Image upload failed:', errorMsg, '- continuing without image URL');
-            }
-          }
-        }
-      }
-
-      // Save to database with all fields
-      const kycData = await supabaseDatabaseService.submitKYCDocument(
-        user.id,
-        'aadhaar',
-        {
-          documentNumber: extractedData.aadhaarNumber,
-          name: extractedData.fullName || undefined,
-          dateOfBirth: extractedData.dateOfBirth || undefined,
-          address: extractedData.address || undefined,
-          fileUrl: fileUrl,
-        }
-      );
-
-      // Update local store
-      setKYCData({
-        userId: kycData.userId,
-        documentType: kycData.documentType,
-        documentNumber: kycData.documentNumber,
-        name: kycData.name,
-        dateOfBirth: kycData.dateOfBirth,
-        address: kycData.address,
-        fileUrl: kycData.fileUrl,
-        status: kycData.status,
-        submittedAt: kycData.submittedAt,
-        verifiedAt: kycData.verifiedAt,
+      // Submit to KYC store (handles both DB submission and local state update)
+      await submitDocument(user.id, 'aadhaar', {
+        documentNumber: extractedData.aadhaarNumber,
+        name: extractedData.fullName || undefined,
+        dateOfBirth: extractedData.dateOfBirth || undefined,
+        address: extractedData.address || undefined,
       });
-
-      // Note: Image file cleanup is handled automatically by the OS
-      // Temporary files from expo-image-picker are automatically cleaned up
-      // No manual deletion needed - this avoids deprecated FileSystem API issues
 
       Alert.alert(
         'Success',

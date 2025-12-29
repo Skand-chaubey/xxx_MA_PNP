@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
 import { ocrService, ExpoGoDetectedError, OCRNotAvailableError } from '@/services/mlkit/ocrService';
-import { useKYCStore } from '@/store';
+import { useKYCStore, useAuthStore } from '@/store';
 import * as FileSystem from 'expo-file-system/legacy';
 
 type ElectricityBillScanScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ElectricityBillScan'>;
@@ -40,7 +40,8 @@ interface ExtractedBillData {
 }
 
 export default function ElectricityBillScanScreen({ navigation }: Props) {
-  const { setKYCData } = useKYCStore();
+  const { submitDocument, isSubmitting, canUseOCR, getDocumentStatus } = useKYCStore();
+  const { user } = useAuthStore();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedBillData>({
@@ -60,14 +61,35 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [isExpoGo, setIsExpoGo] = useState(false);
 
-  // Check if running in Expo Go on mount
+  // Check OCR access and Expo Go status on mount
   useEffect(() => {
     const checkExpoGo = ocrService.isRunningInExpoGo();
     setIsExpoGo(checkExpoGo);
     if (checkExpoGo && __DEV__) {
       console.log('📱 Running in Expo Go - OCR disabled');
     }
-  }, []);
+    
+    // Check if OCR can be used for this document
+    const ocrAllowed = canUseOCR('electricity_bill');
+    const docStatus = getDocumentStatus('electricity_bill');
+    
+    if (!ocrAllowed) {
+      console.log('[ElectricityBillScan] OCR not allowed, status:', docStatus);
+      if (docStatus === 'verified') {
+        Alert.alert(
+          'Document Verified',
+          'Your electricity bill has already been verified. No re-upload needed.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else if (docStatus === 'pending') {
+        Alert.alert(
+          'Document Pending',
+          'Your electricity bill is currently being reviewed. Please wait for verification.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+    }
+  }, [canUseOCR, getDocumentStatus, navigation]);
 
   /**
    * Format date with slashes: DD/MM/YYYY
@@ -337,42 +359,23 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
    * Handle image upload button press
    */
   const handleUploadImage = async () => {
-    // If running in Expo Go and Cloud OCR is not available, show warning
-    if (isExpoGo && !ocrService.isCloudOCRAvailable()) {
-      Alert.alert(
-        'OCR Not Available',
-        'Document scanning requires a development build or Cloud OCR API.\n\n' +
-        'You can upload an image or enter bill details manually.',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Enter Manually',
-            onPress: () => {
-              setExtractedData({
-                consumerName: '',
-                consumerNumber: '',
-                meterNumber: '',
-                discomName: '',
-                billingPeriod: '',
-                billDate: '',
-                dueDate: '',
-                unitsConsumed: '',
-                billAmount: '',
-                serviceAddress: '',
-              });
-              setShowForm(true);
-              setIsManualEntry(true);
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
+    // Check if running in Expo Go - silently fall back to manual entry
+    if (isExpoGo) {
+      console.log('[ElectricityBillScan] Expo Go detected - using manual entry mode');
+      setExtractedData({
+        consumerName: '',
+        consumerNumber: '',
+        meterNumber: '',
+        discomName: '',
+        billingPeriod: '',
+        billDate: '',
+        dueDate: '',
+        unitsConsumed: '',
+        billAmount: '',
+        serviceAddress: '',
+      });
+      setShowForm(true);
+      setIsManualEntry(true);
       return;
     }
     
@@ -520,16 +523,9 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
           console.error('❌ Bill OCR Error:', ocrError?.name || 'Unknown');
         }
         
-        // Handle Expo Go detection
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'OCR Not Available',
-            'Document scanning requires either:\n\n' +
-            '• A development build (npx expo run:android)\n' +
-            '• Cloud OCR API key configured in app.json\n\n' +
-            'You can manually enter your bill details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[ElectricityBillScan] Expo Go detected during OCR - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -537,14 +533,9 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle OCR not available error
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. The image may be unclear or OCR is not available.\n\n' +
-            'Please manually enter your bill details below.',
-            [{ text: 'Enter Manually', style: 'default' }]
-          );
+          console.log('[ElectricityBillScan] OCR not available - using manual entry');
           setExtractedData(emptyData);
           setShowForm(true);
           setIsManualEntry(true);
@@ -552,12 +543,8 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
           return;
         }
         
-        // Handle generic OCR errors
-        Alert.alert(
-          'Processing Error',
-          'Could not process the image. Please try again or enter details manually.',
-          [{ text: 'Enter Manually', style: 'default' }]
-        );
+        // Handle generic OCR errors - silently fall back to manual entry
+        console.log('[ElectricityBillScan] OCR processing error - using manual entry');
         setExtractedData(emptyData);
         setShowForm(true);
         setIsManualEntry(true);
@@ -660,18 +647,19 @@ export default function ElectricityBillScanScreen({ navigation }: Props) {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found. Please sign in again.');
+      return;
+    }
+
     try {
       setIsProcessing(true);
 
-      // Set local KYC status = PENDING (NO Supabase calls as per requirements)
-      setKYCData({
-        userId: 'current_user_id',
-        documentType: 'electricity_bill',
+      // Submit to KYC store (handles both DB submission and local state update)
+      await submitDocument(user.id, 'electricity_bill', {
         documentNumber: extractedData.consumerNumber || extractedData.meterNumber,
         name: extractedData.consumerName || undefined,
         address: extractedData.serviceAddress || undefined,
-        status: 'pending',
-        submittedAt: new Date(),
       });
 
       Alert.alert(

@@ -167,6 +167,7 @@ export type RootStackParamList = {
   Marketplace: undefined;
   Wallet: undefined;
   Profile: undefined;
+  EditProfile: undefined;
   Order: {
     sellerId: string;
     sellerName: string;

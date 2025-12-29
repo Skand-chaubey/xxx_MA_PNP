@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as Location from 'expo-location';
+import { locationService } from '@/services/locationService';
 import Constants from 'expo-constants';
 import { RootStackParamList, Seller } from '@/types';
 import { becknClient } from '@/services/beckn/becknClient';
@@ -70,35 +70,29 @@ export default function MarketplaceScreen({ navigation }: Props) {
     lng: 73.8567, // Pune longitude
   };
 
-  // Get user location
+  // Get user location using cached locationService
   useEffect(() => {
     getLocation();
   }, []);
 
-  const getLocation = async () => {
+  const getLocation = async (forceRefresh: boolean = false) => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        // Use default location (Pune) if permission denied
-        console.log('Location permission denied, using default location (Pune)');
-        setUserLocation(DEFAULT_LOCATION);
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (location?.coords) {
+      console.log('[MarketplaceScreen] Getting location, forceRefresh:', forceRefresh);
+      const cachedLocation = await locationService.getCurrentLocation(forceRefresh);
+      
+      if (cachedLocation) {
+        console.log('[MarketplaceScreen] Got location:', cachedLocation.latitude, cachedLocation.longitude);
         setUserLocation({
-          lat: location.coords.latitude,
-          lng: location.coords.longitude,
+          lat: cachedLocation.latitude,
+          lng: cachedLocation.longitude,
         });
       } else {
-        // Fallback to default location
+        // Fallback to default location (Pune)
+        console.log('[MarketplaceScreen] No location available, using default (Pune)');
         setUserLocation(DEFAULT_LOCATION);
       }
     } catch (error: any) {
-      console.error('Error getting location:', error);
+      console.error('[MarketplaceScreen] Error getting location:', error);
       // Use default location (Pune) on error
       setUserLocation(DEFAULT_LOCATION);
     }
@@ -673,7 +667,7 @@ export default function MarketplaceScreen({ navigation }: Props) {
                 Try adjusting your filters or search radius
               </Text>
               {!userLocation && (
-                <TouchableOpacity style={styles.locationButton} onPress={getLocation}>
+                <TouchableOpacity style={styles.locationButton} onPress={() => getLocation(true)}>
                   <LinearGradient
                     colors={['#10b981', '#059669']}
                     style={styles.locationButtonGradient}

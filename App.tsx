@@ -4,12 +4,15 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { AppNavigator } from '@/navigation/AppNavigator';
-import { useAuthStore, useMeterStore } from '@/store';
+import { useAuthStore, useMeterStore, useThemeStore } from '@/store';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ThemeProvider, useTheme } from '@/contexts';
 
-export default function App() {
+// Inner app component that can use the theme context
+function AppContent() {
   const { restoreSession, isLoading, user, isAuthenticated } = useAuthStore();
   const { restoreMeters } = useMeterStore();
+  const { isDark } = useTheme();
 
   useEffect(() => {
     // Restore session on app startup
@@ -36,11 +39,19 @@ export default function App() {
   }
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppNavigator />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+    </GestureHandlerRootView>
+  );
+}
+
+export default function App() {
+  return (
     <ErrorBoundary>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <AppNavigator />
-        <StatusBar style="auto" />
-      </GestureHandlerRootView>
+      <ThemeProvider>
+        <AppContent />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

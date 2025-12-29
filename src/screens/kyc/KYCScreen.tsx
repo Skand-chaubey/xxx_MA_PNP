@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,17 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '@/types';
-import { useKYCStore } from '@/store';
+import { useKYCStore, useAuthStore } from '@/store';
+import type { KYCDocumentType, DocumentStatus } from '@/store';
 import { KYC_DOCUMENT_TYPES } from '@/utils/constants';
 import DocumentScanScreen from './DocumentScanScreen';
 import LivenessCheckScreen from './LivenessCheckScreen';
@@ -25,55 +29,214 @@ interface Props {
 
 type DocumentType = (typeof KYC_DOCUMENT_TYPES)[number];
 
-const documentConfig: Record<DocumentType, { icon: string; color: string; description: string }> = {
+// Document configuration with icons, colors, and descriptions
+const documentConfig: Record<DocumentType, { icon: string; color: string; description: string; title: string }> = {
   aadhaar: {
     icon: 'card-account-details',
     color: '#3b82f6',
     description: 'Government issued identity card',
+    title: 'Aadhaar Card',
   },
   pan: {
     icon: 'card-account-details-outline',
     color: '#8b5cf6',
     description: 'Permanent Account Number card',
+    title: 'PAN Card',
   },
   electricity_bill: {
     icon: 'file-document',
     color: '#10b981',
     description: 'Latest electricity bill',
+    title: 'Electricity Bill',
   },
   gst: {
     icon: 'file-certificate',
     color: '#f59e0b',
     description: 'GST registration certificate',
+    title: 'GST Certificate',
   },
   society_registration: {
     icon: 'office-building',
     color: '#ef4444',
     description: 'Society registration document',
+    title: 'Society Registration',
+  },
+};
+
+// Status badge configuration for per-document status
+const statusConfig: Record<DocumentStatus, { label: string; color: string; bgColor: string; icon: string }> = {
+  not_started: {
+    label: 'Not Started',
+    color: '#6b7280',
+    bgColor: '#f3f4f6',
+    icon: 'remove-circle-outline',
+  },
+  pending: {
+    label: 'Pending',
+    color: '#f59e0b',
+    bgColor: '#fef3c7',
+    icon: 'time-outline',
+  },
+  verified: {
+    label: 'Verified',
+    color: '#10b981',
+    bgColor: '#d1fae5',
+    icon: 'checkmark-circle',
+  },
+  rejected: {
+    label: 'Rejected',
+    color: '#ef4444',
+    bgColor: '#fee2e2',
+    icon: 'close-circle',
+  },
+};
+
+// Overall status configuration
+const overallStatusConfig: Record<string, { label: string; color: string; icon: string; message: string }> = {
+  not_started: {
+    label: 'Not Started',
+    color: '#6b7280',
+    icon: 'information-circle-outline',
+    message: 'Start by uploading your identity documents',
+  },
+  pending: {
+    label: 'Pending Review',
+    color: '#f59e0b',
+    icon: 'time-outline',
+    message: 'Your documents are being reviewed',
+  },
+  verified: {
+    label: 'Verified',
+    color: '#10b981',
+    icon: 'checkmark-circle',
+    message: 'Your identity has been verified',
+  },
+  rejected: {
+    label: 'Rejected',
+    color: '#ef4444',
+    icon: 'close-circle',
+    message: 'Please resubmit your documents',
+  },
+  partial: {
+    label: 'Partially Complete',
+    color: '#3b82f6',
+    icon: 'hourglass-outline',
+    message: 'Some documents still need to be submitted',
   },
 };
 
 export default function KYCScreen({ navigation }: Props) {
-  const { status, setKYCData, isVerified } = useKYCStore();
+  const { user } = useAuthStore();
+  const { 
+    overallStatus, 
+    documentStatuses, 
+    documents,
+    isLoading, 
+    fetchKYCDocuments, 
+    getDocumentStatus,
+    getDocument,
+    isVerified,
+    submitDocument,
+  } = useKYCStore();
+  
   const [selectedDocument, setSelectedDocument] = useState<DocumentType | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showLivenessCheck, setShowLivenessCheck] = useState(false);
-  const [documentsScanned, setDocumentsScanned] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleDocumentSelect = (docType: DocumentType) => {
-    setSelectedDocument(docType);
-    setShowScanner(true);
+  // Fetch KYC documents on mount and when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        fetchKYCDocuments(user.id);
+      }
+    }, [user?.id, fetchKYCDocuments])
+  );
+
+  const handleRefresh = useCallback(async () => {
+    if (user?.id) {
+      setRefreshing(true);
+      await fetchKYCDocuments(user.id);
+      setRefreshing(false);
+    }
+  }, [user?.id, fetchKYCDocuments]);
+
+  const handleDocumentPress = (docType: DocumentType) => {
+    const status = getDocumentStatus(docType as KYCDocumentType);
+    const document = getDocument(docType as KYCDocumentType);
+    
+    // If document is verified, show details (read-only)
+    if (status === 'verified' && document) {
+      showDocumentDetails(docType, document);
+      return;
+    }
+    
+    // If pending, show status
+    if (status === 'pending') {
+      Alert.alert(
+        'Document Pending',
+        'This document is currently being reviewed. You will be notified once verification is complete.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    // If rejected, allow re-submission
+    if (status === 'rejected') {
+      Alert.alert(
+        'Document Rejected',
+        'Your document was rejected. Would you like to re-submit?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Re-submit', onPress: () => navigateToScan(docType) },
+        ]
+      );
+      return;
+    }
+    
+    // Otherwise navigate to scan screen
+    navigateToScan(docType);
+  };
+
+  const showDocumentDetails = (docType: DocumentType, document: any) => {
+    const config = documentConfig[docType];
+    const status = getDocumentStatus(docType as KYCDocumentType);
+    const statusCfg = statusConfig[status];
+    
+    Alert.alert(
+      config.title,
+      `Status: ${statusCfg.label}\n${document.documentNumber ? `Document Number: ${document.documentNumber}\n` : ''}${document.name ? `Name: ${document.name}\n` : ''}${document.submittedAt ? `Submitted: ${new Date(document.submittedAt).toLocaleDateString()}` : ''}`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const navigateToScan = (docType: DocumentType) => {
+    switch (docType) {
+      case 'aadhaar':
+        navigation.navigate('AadhaarScan');
+        break;
+      case 'pan':
+        navigation.navigate('PANScan');
+        break;
+      case 'electricity_bill':
+        navigation.navigate('ElectricityBillScan');
+        break;
+      case 'gst':
+        navigation.navigate('GSTScan');
+        break;
+      case 'society_registration':
+        navigation.navigate('SocietyRegistrationScan');
+        break;
+    }
   };
 
   const handleScanComplete = async (result: { text: string; extractedData: any }) => {
     setShowScanner(false);
     
-    if (!selectedDocument) {
-      Alert.alert('Error', 'No document selected');
+    if (!selectedDocument || !user?.id) {
+      Alert.alert('Error', 'No document selected or user not found');
       return;
     }
-    
-    setDocumentsScanned([...documentsScanned, selectedDocument]);
     
     if (selectedDocument === 'aadhaar' || selectedDocument === 'pan') {
       Alert.alert(
@@ -87,18 +250,20 @@ export default function KYCScreen({ navigation }: Props) {
         ]
       );
     } else {
-      if (!selectedDocument) {
-        Alert.alert('Error', 'No document selected');
-        return;
+      try {
+        await submitDocument(user.id, selectedDocument as KYCDocumentType, {
+          documentNumber: result.extractedData?.consumerNumber,
+          name: result.extractedData?.name,
+          address: result.extractedData?.address,
+        });
+        
+        Alert.alert(
+          'Document Submitted',
+          'Your document has been submitted for verification. You will be notified once it is reviewed.'
+        );
+      } catch (error: any) {
+        Alert.alert('Error', error.message || 'Failed to submit document');
       }
-      
-      setKYCData({
-        userId: 'current_user_id',
-        documentType: selectedDocument,
-        documentNumber: result.extractedData?.consumerNumber,
-        status: 'pending',
-        submittedAt: new Date(),
-      });
     }
   };
 
@@ -106,20 +271,14 @@ export default function KYCScreen({ navigation }: Props) {
     try {
       setShowLivenessCheck(false);
       
-      if (!imageUri) {
+      if (!imageUri || !user?.id || !selectedDocument) {
         Alert.alert('Error', 'Failed to capture image. Please try again.');
         return;
       }
       
-      const scannedDoc = documentsScanned.find((doc) => doc === 'aadhaar' || doc === 'pan');
-      if (scannedDoc) {
-        setKYCData({
-          userId: 'current_user_id',
-          documentType: scannedDoc as 'aadhaar' | 'pan',
-          status: 'pending',
-          submittedAt: new Date(),
-        });
-      }
+      await submitDocument(user.id, selectedDocument as KYCDocumentType, {
+        fileUrl: imageUri,
+      });
 
       Alert.alert(
         'Verification Submitted',
@@ -130,39 +289,7 @@ export default function KYCScreen({ navigation }: Props) {
     }
   };
 
-  const getStatusColor = () => {
-    switch (status) {
-      case 'verified':
-        return '#10b981';
-      case 'rejected':
-        return '#ef4444';
-      default:
-        return '#f59e0b';
-    }
-  };
-
-  const getStatusText = () => {
-    switch (status) {
-      case 'verified':
-        return 'Verified';
-      case 'rejected':
-        return 'Rejected';
-      default:
-        return 'Pending Verification';
-    }
-  };
-
-  const getStatusIcon = () => {
-    switch (status) {
-      case 'verified':
-        return 'check-circle';
-      case 'rejected':
-        return 'close-circle';
-      default:
-        return 'clock-outline';
-    }
-  };
-
+  // Render document scanner or liveness check if active
   if (showScanner && selectedDocument) {
     return (
       <DocumentScanScreen
@@ -182,20 +309,20 @@ export default function KYCScreen({ navigation }: Props) {
     );
   }
 
-  // Render document card component
+  // Render document card with per-document status badge
   const renderDocumentCard = (
     docType: DocumentType,
-    title: string,
-    onPress: () => void,
     isOptional?: boolean
   ) => {
     const config = documentConfig[docType];
-    const isScanned = documentsScanned.includes(docType);
+    const status = getDocumentStatus(docType as KYCDocumentType);
+    const statusCfg = statusConfig[status];
     
     return (
       <TouchableOpacity
+        key={docType}
         style={[styles.documentCard, isOptional && styles.documentCardOptional]}
-        onPress={onPress}
+        onPress={() => handleDocumentPress(docType)}
         activeOpacity={0.7}
       >
         <View style={styles.documentCardInner}>
@@ -207,22 +334,24 @@ export default function KYCScreen({ navigation }: Props) {
             />
           </View>
           <View style={styles.documentCardContent}>
-            <Text style={styles.documentCardTitle}>{title}</Text>
+            <Text style={styles.documentCardTitle}>{config.title}</Text>
             <Text style={styles.documentCardSubtitle}>{config.description}</Text>
           </View>
-          {isScanned ? (
-            <View style={styles.checkIconWrapper}>
-              <MaterialCommunityIcons name="check-circle" size={22} color="#10b981" />
-            </View>
-          ) : (
-            <View style={styles.arrowIconWrapper}>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-            </View>
-          )}
+          
+          {/* Per-document status badge */}
+          <View style={[styles.docStatusBadge, { backgroundColor: statusCfg.bgColor }]}>
+            <Ionicons name={statusCfg.icon as any} size={14} color={statusCfg.color} />
+            <Text style={[styles.docStatusText, { color: statusCfg.color }]}>
+              {statusCfg.label}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
+
+  // Get overall status config
+  const currentOverallStatus = overallStatusConfig[overallStatus] || overallStatusConfig.not_started;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -249,145 +378,135 @@ export default function KYCScreen({ navigation }: Props) {
         </View>
       </LinearGradient>
 
-      <ScrollView 
-        style={styles.scrollView} 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Info Banner */}
-        <View style={styles.infoBanner}>
-          <Ionicons name="information-circle" size={20} color="#6b7280" />
-          <Text style={styles.infoBannerText}>
-            As per government regulations, we need to verify your identity before you can trade energy.
-          </Text>
+      {/* Loading State */}
+      {isLoading && !refreshing && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10b981" />
+          <Text style={styles.loadingText}>Loading KYC status...</Text>
         </View>
+      )}
 
-        {/* Status Badge */}
-        {status !== 'pending' && (
-          <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + '12', borderColor: getStatusColor() + '30' }]}>
-            <View style={[styles.statusIconWrapper, { backgroundColor: getStatusColor() + '20' }]}>
-              <MaterialCommunityIcons
-                name={getStatusIcon() as any}
+      {!isLoading && (
+        <ScrollView 
+          style={styles.scrollView} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#10b981']}
+              tintColor="#10b981"
+            />
+          }
+        >
+          {/* Info Banner */}
+          <View style={styles.infoBanner}>
+            <Ionicons name="information-circle" size={20} color="#6b7280" />
+            <Text style={styles.infoBannerText}>
+              As per government regulations, we need to verify your identity before you can trade energy.
+            </Text>
+          </View>
+
+          {/* Overall Status Badge */}
+          <View style={[styles.statusBadge, { backgroundColor: currentOverallStatus.color + '12', borderColor: currentOverallStatus.color + '30' }]}>
+            <View style={[styles.statusIconWrapper, { backgroundColor: currentOverallStatus.color + '20' }]}>
+              <Ionicons
+                name={currentOverallStatus.icon as any}
                 size={20}
-                color={getStatusColor()}
+                color={currentOverallStatus.color}
               />
             </View>
             <View style={styles.statusBadgeContent}>
-              <Text style={[styles.statusText, { color: getStatusColor() }]}>
-                {getStatusText()}
+              <Text style={[styles.statusText, { color: currentOverallStatus.color }]}>
+                {currentOverallStatus.label}
               </Text>
               <Text style={styles.statusSubtext}>
-                {status === 'verified'
-                  ? 'Your identity has been verified'
-                  : status === 'rejected'
-                  ? 'Please resubmit your documents'
-                  : 'Your verification is being processed'}
+                {currentOverallStatus.message}
               </Text>
             </View>
           </View>
-        )}
 
-        {!isVerified() && (
-          <>
-            {/* Section 1: Identity Documents */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleWrapper}>
-                  <View style={styles.sectionBadge}>
-                    <Text style={styles.sectionBadgeText}>Required</Text>
+          {/* Verified State */}
+          {isVerified() && (
+            <View style={styles.verifiedContainer}>
+              <View style={styles.verifiedIconWrapper}>
+                <MaterialCommunityIcons name="check-circle" size={56} color="#10b981" />
+              </View>
+              <Text style={styles.verifiedTitle}>Identity Verified</Text>
+              <Text style={styles.verifiedSubtitle}>
+                Your identity has been successfully verified. You can now participate in energy trading.
+              </Text>
+            </View>
+          )}
+
+          {!isVerified() && (
+            <>
+              {/* Section 1: Identity Documents */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleWrapper}>
+                    <View style={styles.sectionBadge}>
+                      <Text style={styles.sectionBadgeText}>Required</Text>
+                    </View>
+                    <Text style={styles.sectionTitle}>Identity Documents</Text>
                   </View>
-                  <Text style={styles.sectionTitle}>Identity Documents</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Upload a government-issued ID to verify your identity
+                  </Text>
                 </View>
-                <Text style={styles.sectionSubtitle}>
-                  Upload a government-issued ID to verify your identity
-                </Text>
+
+                <View style={styles.cardsContainer}>
+                  {renderDocumentCard('aadhaar')}
+                  {renderDocumentCard('pan')}
+                </View>
               </View>
 
-              <View style={styles.cardsContainer}>
-                {renderDocumentCard(
-                  'aadhaar',
-                  'Scan Aadhaar Card',
-                  () => navigation.navigate('AadhaarScan')
-                )}
-                {renderDocumentCard(
-                  'pan',
-                  'Scan PAN Card',
-                  () => navigation.navigate('PANScan')
-                )}
-              </View>
-            </View>
-
-            {/* Section 2: Additional Documents */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleWrapper}>
-                  <View style={styles.sectionBadge}>
-                    <Text style={styles.sectionBadgeText}>Required</Text>
+              {/* Section 2: Additional Documents */}
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleWrapper}>
+                    <View style={styles.sectionBadge}>
+                      <Text style={styles.sectionBadgeText}>Required</Text>
+                    </View>
+                    <Text style={styles.sectionTitle}>Additional Documents</Text>
                   </View>
-                  <Text style={styles.sectionTitle}>Additional Documents</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Required for meter verification
+                  </Text>
                 </View>
-                <Text style={styles.sectionSubtitle}>
-                  Required for meter verification
-                </Text>
+
+                <View style={styles.cardsContainer}>
+                  {renderDocumentCard('electricity_bill')}
+                </View>
               </View>
 
-              <View style={styles.cardsContainer}>
-                {renderDocumentCard(
-                  'electricity_bill',
-                  'Scan Electricity Bill',
-                  () => navigation.navigate('ElectricityBillScan')
-                )}
-              </View>
-            </View>
-
-            {/* Section 3: Business Documents (Optional) */}
-            <View style={[styles.section, styles.sectionOptional]}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleWrapper}>
-                  <View style={[styles.sectionBadge, styles.sectionBadgeOptional]}>
-                    <Text style={[styles.sectionBadgeText, styles.sectionBadgeTextOptional]}>Optional</Text>
+              {/* Section 3: Business Documents (Optional) */}
+              <View style={[styles.section, styles.sectionOptional]}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleWrapper}>
+                    <View style={[styles.sectionBadge, styles.sectionBadgeOptional]}>
+                      <Text style={[styles.sectionBadgeText, styles.sectionBadgeTextOptional]}>Optional</Text>
+                    </View>
+                    <Text style={[styles.sectionTitle, styles.sectionTitleOptional]}>Business Documents</Text>
                   </View>
-                  <Text style={[styles.sectionTitle, styles.sectionTitleOptional]}>Business Documents</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    For societies and commercial users
+                  </Text>
                 </View>
-                <Text style={styles.sectionSubtitle}>
-                  For societies and commercial users
-                </Text>
+
+                <View style={styles.cardsContainer}>
+                  {renderDocumentCard('gst', true)}
+                  {renderDocumentCard('society_registration', true)}
+                </View>
               </View>
+            </>
+          )}
 
-              <View style={styles.cardsContainer}>
-                {renderDocumentCard(
-                  'gst',
-                  'Upload GST Certificate',
-                  () => navigation.navigate('GSTScan'),
-                  true
-                )}
-                {renderDocumentCard(
-                  'society_registration',
-                  'Upload Society Registration',
-                  () => navigation.navigate('SocietyRegistrationScan'),
-                  true
-                )}
-              </View>
-            </View>
-          </>
-        )}
-
-        {/* Verified State */}
-        {isVerified() && (
-          <View style={styles.verifiedContainer}>
-            <View style={styles.verifiedIconWrapper}>
-              <MaterialCommunityIcons name="check-circle" size={56} color="#10b981" />
-            </View>
-            <Text style={styles.verifiedTitle}>Identity Verified</Text>
-            <Text style={styles.verifiedSubtitle}>
-              Your identity has been successfully verified. You can now participate in energy trading.
-            </Text>
-          </View>
-        )}
-
-        {/* Bottom Spacing */}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+          {/* Bottom Spacing */}
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -436,6 +555,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6b7280',
   },
   scrollView: {
     flex: 1,
@@ -580,17 +710,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
   },
-  checkIconWrapper: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
+  docStatusBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
   },
-  arrowIconWrapper: {
-    width: 32,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
+  docStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   verifiedContainer: {
     backgroundColor: '#ecfdf5',
@@ -599,6 +729,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#bbf7d0',
+    marginBottom: 24,
   },
   verifiedIconWrapper: {
     width: 80,

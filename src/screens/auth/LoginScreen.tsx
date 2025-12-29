@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -13,7 +12,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import { validateEmail } from '@/utils/helpers';
+import {
+  validateIdentifier,
+  validateTermsAccepted,
+  detectIdentifierType,
+  INDIA_COUNTRY_CODE,
+} from '@/utils/authValidation';
 import { authService } from '@/services/api/authService';
 import { useAuthStore } from '@/store';
 
@@ -24,42 +28,115 @@ interface Props {
 }
 
 export default function LoginScreen({ navigation }: Props) {
-  const [email, setEmail] = useState('');
+  // Form state
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [showTermsError, setShowTermsError] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Touched state for validation display
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [termsTouched, setTermsTouched] = useState(false);
+  
+  // Error state
+  const [serverError, setServerError] = useState('');
+  
   const { setUser, setToken } = useAuthStore();
 
+  // Memoized validation
+  const identifierValidation = useMemo(
+    () => validateIdentifier(identifier),
+    [identifier]
+  );
+
+  const identifierType = useMemo(
+    () => detectIdentifierType(identifier),
+    [identifier]
+  );
+
+  const termsValidation = useMemo(
+    () => validateTermsAccepted(termsAccepted),
+    [termsAccepted]
+  );
+
+  // Password validation - just checking non-empty for login
+  const isPasswordValid = password.length >= 1;
+
+  // Form validity
+  const isFormValid = useMemo(() => {
+    return (
+      identifierValidation.isValid &&
+      isPasswordValid &&
+      termsValidation.isValid
+    );
+  }, [identifierValidation.isValid, isPasswordValid, termsValidation.isValid]);
+
+  // Get keyboard type based on detected identifier type
+  const getKeyboardType = () => {
+    if (identifierType === 'mobile') {
+      return 'phone-pad';
+    }
+    return 'email-address';
+  };
+
+  // Get placeholder hint
+  const getPlaceholder = () => {
+    if (identifierType === 'mobile') {
+      return 'Enter 10 digit mobile number';
+    }
+    return 'Email or mobile number';
+  };
+
   const handleLogin = async () => {
-    // Check terms acceptance first
-    if (!termsAccepted) {
-      setShowTermsError(true);
+    // Mark all fields as touched
+    setIdentifierTouched(true);
+    setPasswordTouched(true);
+    setTermsTouched(true);
+
+    // Validate terms
+    if (!termsValidation.isValid) {
       return;
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
-
-    if (!validateEmail(trimmedEmail)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+    // Validate identifier
+    if (!identifierValidation.isValid) {
       return;
     }
 
-    if (!password || password.length < 6) {
-      Alert.alert('Invalid Password', 'Password must be at least 6 characters');
+    // Validate password
+    if (!isPasswordValid) {
       return;
     }
 
     setIsLoading(true);
+    setServerError('');
+
     try {
       if (__DEV__) {
         console.log('🚀 Starting sign in process...');
+        console.log('📧 Identifier type:', identifierValidation.type);
         // SECURITY: Never log password
       }
 
+      // Prepare credentials based on identifier type
+      const credentials = {
+        email: identifierValidation.type === 'email' 
+          ? identifierValidation.formattedValue 
+          : '', // Will be handled by backend when mobile is provided
+        password: password,
+        ...(identifierValidation.type === 'mobile' && {
+          phoneNumber: identifierValidation.formattedValue,
+        }),
+      };
+
+      // For now, use email-based login since backend expects email
+      // In Phase 2, backend will support phone number lookup
       const response = await authService.signIn({
-        email: trimmedEmail,
+        email: identifierValidation.type === 'email'
+          ? identifierValidation.formattedValue
+          : `${identifierValidation.formattedValue.replace('+', '')}@phone.placeholder`,
         password: password,
       });
 
@@ -78,7 +155,6 @@ export default function LoginScreen({ navigation }: Props) {
         setUser(response.data.user);
         
         // Navigation will happen automatically via AppNavigator when isAuthenticated becomes true
-        // No need to manually navigate - AppNavigator will show Main screen
         if (__DEV__) {
           console.log('✅ User authenticated, AppNavigator will show Main screen automatically');
         }
@@ -86,13 +162,13 @@ export default function LoginScreen({ navigation }: Props) {
         if (__DEV__) {
           console.error('❌ Sign in failed:', response.error);
         }
-        Alert.alert('Sign In Failed', response.error || 'Invalid email or password');
+        setServerError(response.error || 'Invalid credentials. Please try again.');
       }
     } catch (error: any) {
       if (__DEV__) {
         console.error('❌ Sign in exception:', error);
       }
-      Alert.alert('Error', error.message || 'Failed to sign in. Please try again.');
+      setServerError(error.message || 'Failed to sign in. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -112,31 +188,77 @@ export default function LoginScreen({ navigation }: Props) {
           <Text style={styles.title}>PowerNetPro</Text>
           <Text style={styles.subtitle}>Democratizing Energy</Text>
 
+          {/* Email or Mobile Input */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email address"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={email}
-              onChangeText={setEmail}
-              autoFocus
-            />
+            <Text style={styles.label}>Email or Mobile Number</Text>
+            <View
+              style={[
+                styles.inputWrapper,
+                identifierTouched && !identifierValidation.isValid && identifier.length > 0
+                  ? styles.inputError
+                  : identifierTouched && identifierValidation.isValid
+                  ? styles.inputSuccess
+                  : null,
+              ]}
+            >
+              {identifierType === 'mobile' && (
+                <Text style={styles.countryCode}>{INDIA_COUNTRY_CODE}</Text>
+              )}
+              <TextInput
+                style={[
+                  styles.input,
+                  identifierType === 'mobile' && styles.inputWithPrefix,
+                ]}
+                placeholder={getPlaceholder()}
+                placeholderTextColor="#9ca3af"
+                keyboardType={getKeyboardType()}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={identifier}
+                onChangeText={(text) => {
+                  setIdentifier(text);
+                  if (serverError) setServerError('');
+                }}
+                onBlur={() => setIdentifierTouched(true)}
+                autoFocus
+              />
+              {identifierTouched && identifier.length > 0 && (
+                <Ionicons
+                  name={identifierValidation.isValid ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={identifierValidation.isValid ? '#10b981' : '#ef4444'}
+                />
+              )}
+            </View>
+            {identifierTouched && !identifierValidation.isValid && identifier.length > 0 && (
+              <Text style={styles.errorText}>{identifierValidation.error}</Text>
+            )}
           </View>
 
+          {/* Password Input */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordInputWrapper}>
+            <View
+              style={[
+                styles.inputWrapper,
+                passwordTouched && !isPasswordValid && password.length > 0
+                  ? styles.inputError
+                  : null,
+              ]}
+            >
               <TextInput
-                style={styles.passwordInput}
+                style={styles.input}
                 placeholder="Enter your password"
+                placeholderTextColor="#9ca3af"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (serverError) setServerError('');
+                }}
+                onBlur={() => setPasswordTouched(true)}
               />
               <TouchableOpacity
                 style={styles.eyeButton}
@@ -150,6 +272,9 @@ export default function LoginScreen({ navigation }: Props) {
                 />
               </TouchableOpacity>
             </View>
+            {passwordTouched && !isPasswordValid && password.length === 0 && (
+              <Text style={styles.errorText}>Password is required</Text>
+            )}
             
             {/* Forgot Password Link */}
             <TouchableOpacity
@@ -160,13 +285,21 @@ export default function LoginScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
 
+          {/* Server Error */}
+          {serverError ? (
+            <View style={styles.serverErrorContainer}>
+              <Ionicons name="alert-circle" size={16} color="#ef4444" />
+              <Text style={styles.serverErrorText}>{serverError}</Text>
+            </View>
+          ) : null}
+
           {/* Terms & Conditions Checkbox */}
           <View style={styles.termsContainer}>
             <TouchableOpacity
               style={styles.checkboxRow}
               onPress={() => {
                 setTermsAccepted(!termsAccepted);
-                if (showTermsError) setShowTermsError(false);
+                setTermsTouched(true);
               }}
               activeOpacity={0.7}
             >
@@ -192,26 +325,26 @@ export default function LoginScreen({ navigation }: Props) {
                 </Text>
               </Text>
             </TouchableOpacity>
-            {showTermsError && (
-              <Text style={styles.termsError}>
-                Please accept Terms & Conditions to continue
-              </Text>
+            {termsTouched && !termsValidation.isValid && (
+              <Text style={styles.termsError}>{termsValidation.error}</Text>
             )}
           </View>
 
+          {/* Sign In Button */}
           <TouchableOpacity
             style={[
               styles.button,
-              (!termsAccepted || isLoading) && styles.buttonDisabled,
+              (!isFormValid || isLoading) && styles.buttonDisabled,
             ]}
             onPress={handleLogin}
-            disabled={isLoading || !email.trim() || !password.trim() || !termsAccepted}
+            disabled={!isFormValid || isLoading}
           >
             <Text style={styles.buttonText}>
               {isLoading ? 'Signing In...' : 'Sign In'}
             </Text>
           </TouchableOpacity>
 
+          {/* Sign Up Link */}
           <TouchableOpacity
             onPress={() => navigation.navigate('SignUp')}
             style={styles.linkButton}
@@ -253,7 +386,7 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   label: {
     fontSize: 14,
@@ -261,32 +394,42 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#111827',
-  },
-  passwordInputWrapper: {
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 8,
-  },
-  passwordInput: {
-    flex: 1,
     paddingHorizontal: 12,
+  },
+  inputError: {
+    borderColor: '#ef4444',
+  },
+  inputSuccess: {
+    borderColor: '#10b981',
+  },
+  countryCode: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  input: {
+    flex: 1,
     paddingVertical: 12,
     fontSize: 16,
     color: '#111827',
   },
+  inputWithPrefix: {
+    paddingLeft: 4,
+  },
   eyeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    padding: 4,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: 4,
   },
   forgotPasswordButton: {
     alignSelf: 'flex-end',
@@ -296,6 +439,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#10b981',
     fontWeight: '500',
+  },
+  serverErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  serverErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#ef4444',
+    marginLeft: 8,
   },
   termsContainer: {
     marginBottom: 24,
@@ -364,4 +521,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

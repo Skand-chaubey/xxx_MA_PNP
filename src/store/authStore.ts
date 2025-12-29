@@ -3,6 +3,7 @@ import { User } from '@/types';
 import * as SecureStore from 'expo-secure-store';
 import { supabaseAuthService } from '@/services/supabase/authService';
 import { supabase } from '@/services/supabase/client';
+import { useKYCStore } from './kycStore';
 
 interface AuthState {
   user: User | null;
@@ -34,6 +35,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (user) {
       try {
         await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+        
+        // CRITICAL: Sync KYC state from backend when user is set
+        console.log('[AuthStore] User set, syncing KYC from backend...');
+        try {
+          await useKYCStore.getState().syncFromBackend(user.id);
+          console.log('[AuthStore] KYC sync completed');
+        } catch (kycError) {
+          console.error('[AuthStore] KYC sync failed (non-blocking):', kycError);
+        }
       } catch (error) {
         console.error('Error storing user:', error);
       }
@@ -56,12 +66,20 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    console.log('[AuthStore] Logging out...');
+    
+    // CRITICAL: Reset KYC state BEFORE clearing auth
+    console.log('[AuthStore] Resetting KYC state...');
+    useKYCStore.getState().resetKYC();
+    
     // Sign out from Supabase
     await supabaseAuthService.logout();
     
     // Clear SecureStore
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(USER_KEY);
+    
+    console.log('[AuthStore] Logout complete');
     
     set({
       user: null,
@@ -134,18 +152,26 @@ export const useAuthStore = create<AuthState>((set) => ({
               }
               // Use session data even if profile fetch fails
               clearTimeout(timeoutId);
+              const sessionUser = {
+                id: session.user.id,
+                email: session.user.email || '',
+                kycStatus: 'pending' as const,
+                createdAt: new Date(session.user.created_at),
+                updatedAt: new Date(session.user.updated_at || session.user.created_at),
+              };
               set({
-                user: {
-                  id: session.user.id,
-                  email: session.user.email || '',
-                  kycStatus: 'pending',
-                  createdAt: new Date(session.user.created_at),
-                  updatedAt: new Date(session.user.updated_at || session.user.created_at),
-                },
+                user: sessionUser,
                 isAuthenticated: true,
                 token: session.access_token,
                 isLoading: false,
               });
+              // Sync KYC from backend
+              try {
+                await useKYCStore.getState().syncFromBackend(sessionUser.id);
+                console.log('[AuthStore] KYC synced after session restore');
+              } catch (kycErr) {
+                console.error('[AuthStore] KYC sync failed:', kycErr);
+              }
               return;
             }
             
@@ -161,6 +187,13 @@ export const useAuthStore = create<AuthState>((set) => ({
                 token: session.access_token,
                 isLoading: false,
               });
+              // Sync KYC from backend
+              try {
+                await useKYCStore.getState().syncFromBackend(userResponse.data.id);
+                console.log('[AuthStore] KYC synced after session restore');
+              } catch (kycErr) {
+                console.error('[AuthStore] KYC sync failed:', kycErr);
+              }
               return;
             }
           } catch (profileError) {
@@ -169,18 +202,26 @@ export const useAuthStore = create<AuthState>((set) => ({
             }
             // Fallback to session data if profile fetch fails
             clearTimeout(timeoutId);
+            const fallbackUser = {
+              id: session.user.id,
+              email: session.user.email || '',
+              kycStatus: 'pending' as const,
+              createdAt: new Date(session.user.created_at),
+              updatedAt: new Date(session.user.updated_at || session.user.created_at),
+            };
             set({
-              user: {
-                id: session.user.id,
-                email: session.user.email || '',
-                kycStatus: 'pending',
-                createdAt: new Date(session.user.created_at),
-                updatedAt: new Date(session.user.updated_at || session.user.created_at),
-              },
+              user: fallbackUser,
               isAuthenticated: true,
               token: session.access_token,
               isLoading: false,
             });
+            // Sync KYC from backend
+            try {
+              await useKYCStore.getState().syncFromBackend(fallbackUser.id);
+              console.log('[AuthStore] KYC synced after session restore');
+            } catch (kycErr) {
+              console.error('[AuthStore] KYC sync failed:', kycErr);
+            }
             return;
           }
         }
@@ -212,6 +253,13 @@ export const useAuthStore = create<AuthState>((set) => ({
                   token: storedToken,
                   isLoading: false,
                 });
+                // Sync KYC from backend
+                try {
+                  await useKYCStore.getState().syncFromBackend(user.id);
+                  console.log('[AuthStore] KYC synced after SecureStore restore');
+                } catch (kycErr) {
+                  console.error('[AuthStore] KYC sync failed:', kycErr);
+                }
                 return;
               }
             } catch (verifyError) {

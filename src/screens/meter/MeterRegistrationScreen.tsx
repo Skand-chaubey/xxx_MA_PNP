@@ -433,14 +433,9 @@ export default function MeterRegistrationScreen({ navigation, route }: Props) {
           console.error('❌ Bill OCR Error:', ocrError?.name || 'Unknown');
         }
         
-        // Handle Expo Go detection
+        // Handle Expo Go detection - silently fall back to manual entry
         if (ocrError instanceof ExpoGoDetectedError || ocrError?.message === 'EXPO_GO_DETECTED') {
-          Alert.alert(
-            'OCR Not Available',
-            'Document scanning requires a development build or Cloud OCR API.\n\n' +
-            'Please enter bill details manually.',
-            [{ text: 'OK', style: 'default' }]
-          );
+          console.log('[MeterRegistration] Expo Go detected during OCR - using manual entry');
           setIsProcessing(false);
           // Keep the bill as "uploaded" for manual entry
           setExtractedBillData({
@@ -457,13 +452,9 @@ export default function MeterRegistrationScreen({ navigation, route }: Props) {
           return;
         }
         
-        // Handle OCR not available error
+        // Handle OCR not available error - silently fall back to manual entry
         if (ocrError instanceof OCRNotAvailableError) {
-          Alert.alert(
-            'OCR Failed',
-            'Could not read text from the image. Please enter details manually.',
-            [{ text: 'OK', style: 'default' }]
-          );
+          console.log('[MeterRegistration] OCR not available - using manual entry');
           setIsProcessing(false);
           setExtractedBillData({
             discomName: '',
@@ -556,24 +547,10 @@ export default function MeterRegistrationScreen({ navigation, route }: Props) {
    * Handle bill upload button press
    */
   const handleBillUpload = async () => {
-    // If running in Expo Go and Cloud OCR is not available, show warning
-    if (isExpoGo && !ocrService.isCloudOCRAvailable()) {
-      Alert.alert(
-        'OCR Not Available',
-        'Document scanning requires a development build or Cloud OCR API.\n\n' +
-        'You can still upload the bill and enter details manually.',
-        [
-          {
-            text: 'Upload Anyway',
-            onPress: () => proceedWithUpload(),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return;
+    // Check if running in Expo Go - silently proceed with upload
+    // Manual entry will be used since OCR won't work
+    if (isExpoGo) {
+      console.log('[MeterRegistration] Expo Go detected - OCR will fall back to manual entry');
     }
     
     await proceedWithUpload();

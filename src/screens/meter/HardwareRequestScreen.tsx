@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types';
-import * as Location from 'expo-location';
+import { locationService } from '@/services/locationService';
 import { meterService } from '@/services/api/meterService';
 
 type HardwareRequestScreenNavigationProp = NativeStackNavigationProp<
@@ -36,37 +36,36 @@ export default function HardwareRequestScreen({ navigation }: Props) {
   const handleGetLocation = async () => {
     setIsGettingLocation(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      console.log('[HardwareRequest] Getting location...');
+      const cachedLocation = await locationService.getCurrentLocation();
+      
+      if (!cachedLocation) {
         Alert.alert(
-          'Permission Denied',
-          'Location permission is required to auto-fill your address'
+          'Location Unavailable',
+          'Could not get your location. Please enter your address manually.'
         );
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
-      const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      if (reverseGeocode.length > 0) {
-        const addr = reverseGeocode[0];
+      console.log('[HardwareRequest] Got location:', cachedLocation.latitude, cachedLocation.longitude);
+      
+      if (cachedLocation.address) {
         const fullAddress = [
-          addr.street,
-          addr.streetNumber,
-          addr.district,
-          addr.city,
-          addr.postalCode,
-          addr.region,
-          addr.country,
+          cachedLocation.address.city,
+          cachedLocation.address.pincode,
+          cachedLocation.address.state,
         ]
           .filter(Boolean)
           .join(', ');
         setAddress(fullAddress);
+      } else {
+        Alert.alert(
+          'Address Not Found',
+          'Could not determine your address. Please enter it manually.'
+        );
       }
     } catch (error: any) {
+      console.error('[HardwareRequest] Location error:', error);
       Alert.alert('Error', error.message || 'Failed to get location');
     } finally {
       setIsGettingLocation(false);
